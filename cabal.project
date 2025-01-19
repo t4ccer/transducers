@@ -1,0 +1,5 @@
+packages: */*
+
+tests: true
+test-show-details: direct
+-- coverage: true
