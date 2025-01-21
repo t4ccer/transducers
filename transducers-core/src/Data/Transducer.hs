@@ -45,6 +45,7 @@ module Data.Transducer (
   concatNonEmpty,
   nub,
   nubBy,
+  uncons,
 
   -- * Building Blocks
   simpleStatelessReducer,
@@ -504,3 +505,20 @@ nubBy f reducer = makeTransducer reducer [] $ \(seen, s) r a ->
     list_elemBy :: (a -> a -> Bool) -> a -> [a] -> Bool
     list_elemBy _ _ [] = False
     list_elemBy eq y (x : xs) = x `eq` y || list_elemBy eq y xs
+
+uncons ::
+  Reducer s a r ->
+  Reducer s a (Maybe (a, r))
+uncons reducer =
+  Reducer
+    { reducerInitState = reducerInitState reducer
+    , reducerInitAcc = Nothing
+    , reducerFinalize = \s -> \case
+        Nothing -> Nothing
+        Just (fst, r) -> Just (fst, reducerFinalize reducer s r)
+    , reducerStep = \s mr a -> case mr of
+        Nothing -> (Continue (Just (a, reducerInitAcc reducer)), s)
+        Just (fst, r) -> case reducerStep reducer s r a of
+          (Reduced r', s') -> (Reduced (Just (fst, r')), s')
+          (Continue r', s') -> (Continue (Just (fst, r')), s')
+    }

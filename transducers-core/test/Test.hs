@@ -58,6 +58,7 @@ import Data.Transducer (
   sum,
   take,
   takeWhile,
+  uncons,
   zipReducers,
   zipReducersFork,
   (|>),
@@ -288,6 +289,17 @@ main = do
                 ( reduceList (map splitEven |> zipReducersFork head (take 3 |> last)) [1 ..]
                     @?= (Just 1, Just 6)
                 )
+            ]
+        , testGroup
+            "uncons"
+            [ testProperty "Equivalent to []" $ \(xs :: [Int]) ->
+                List.uncons xs === reduceList (uncons intoList) xs
+            , testCase
+                "uncons intoList [1,2,3] = Just (1, [2,3])"
+                (reduceList (uncons intoList) ([1, 2, 3] :: [Int]) @?= Just (1, [2, 3]))
+            , testCase
+                "(drop 2 |> uncons (take 3)) [1..] = Just (3, [4,5,6])"
+                (reduceList (drop 2 |> uncons (take 3 |> intoList)) ([1 ..] :: [Int]) @?= Just (3, [4, 5, 6]))
             ]
         ]
 
