@@ -8,6 +8,7 @@ module Data.Transducer (
   reduceSingleton,
   reduceIterate,
   reduceRepeat,
+  reduceReplicate,
 
   -- * Reducers
   and,
@@ -126,6 +127,18 @@ reduceRepeat reducer a =
     go s r = case reducerStep reducer s r a of
       (Reduced r', s') -> (r', s')
       (Continue r', s') -> go s' r'
+
+reduceReplicate :: forall (a :: Type) (r :: Type) (s :: Type). Reducer s a r -> Int -> a -> r
+reduceReplicate reducer n a =
+  let (r', s') = go (reducerStep reducer) (reducerInitState reducer) (reducerInitAcc reducer) n
+   in reducerFinalize reducer s' r'
+  where
+    go step s r n =
+      if n <= 0
+        then (r, s)
+        else case step s r a of
+          (Reduced r', s') -> (r', s')
+          (Continue r', s') -> go step s' r' (n - 1)
 
 simpleStatelessReducer :: forall (a :: Type) (r :: Type). r -> (r -> a -> r) -> Reducer () a r
 simpleStatelessReducer acc f =
