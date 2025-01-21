@@ -55,6 +55,8 @@
             pkgs.cabal-install
             pkgs.zlib
             hls-alias
+            pkgs.haskellPackages.doctest
+            pkgs.haskellPackages.cabal-doctest
           ];
         };
       };
