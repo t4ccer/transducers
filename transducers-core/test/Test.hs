@@ -24,6 +24,11 @@ import Test.Tasty (adjustOption, defaultMain, testGroup)
 import Test.Tasty.HUnit (testCase, (@?=))
 import Test.Tasty.QuickCheck (QuickCheckTests, testProperty)
 
+#if !(MIN_VERSION_base(4,19,0))
+import Data.Function ((.))
+import Data.Maybe (maybe)
+#endif
+
 #if !(MIN_VERSION_base(4,21,0))
 import Prelude (Num((-)), Ord((<), (>)), foldr, otherwise)
 #endif
@@ -59,6 +64,7 @@ import Data.Transducer (
   take,
   takeWhile,
   uncons,
+  unsnoc,
   zipReducers,
   zipReducersFork,
   (|>),
@@ -301,6 +307,11 @@ main = do
                 "(drop 2 |> uncons (take 3)) [1..] = Just (3, [4,5,6])"
                 (reduceList (drop 2 |> uncons (take 3 |> intoList)) ([1 ..] :: [Int]) @?= Just (3, [4, 5, 6]))
             ]
+        , testGroup
+            "unsnoc"
+            [ testProperty "Equivalent to []" $ \(xs :: [Int]) ->
+                list_unsnoc xs === reduceList (unsnoc intoList) xs
+            ]
         ]
 
 -- * Utils
@@ -321,4 +332,11 @@ list_compareLength xs n
     n
 #else
 list_compareLength = List.compareLength
+#endif
+
+list_unsnoc :: forall (a :: Type). [a] -> Maybe ([a], a)
+#if !(MIN_VERSION_base(4,19,0))
+list_unsnoc = foldr (\x -> Just . maybe ([], x) (\(~(a, b)) -> (x : a, b))) Nothing
+#else
+list_unsnoc = List.unsnoc
 #endif

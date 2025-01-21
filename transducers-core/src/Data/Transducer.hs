@@ -46,6 +46,7 @@ module Data.Transducer (
   nub,
   nubBy,
   uncons,
+  unsnoc,
 
   -- * Building Blocks
   simpleStatelessReducer,
@@ -521,4 +522,21 @@ uncons reducer =
         Just (fst, r) -> case reducerStep reducer s r a of
           (Reduced r', s') -> (Reduced (Just (fst, r')), s')
           (Continue r', s') -> (Continue (Just (fst, r')), s')
+    }
+
+unsnoc ::
+  Reducer s a r ->
+  Reducer s a (Maybe (r, a))
+unsnoc reducer =
+  Reducer
+    { reducerInitState = reducerInitState reducer
+    , reducerInitAcc = Nothing
+    , reducerFinalize = \s -> \case
+        Nothing -> Nothing
+        Just (r, lst) -> Just (reducerFinalize reducer s r, lst)
+    , reducerStep = \s mr a -> case mr of
+        Nothing -> (Continue (Just (reducerInitAcc reducer, a)), s)
+        Just (r, lst) -> case reducerStep reducer s r lst of
+          (Reduced r', s') -> (Reduced (Just (r', a)), s')
+          (Continue r', s') -> (Continue (Just (r', a)), s')
     }
