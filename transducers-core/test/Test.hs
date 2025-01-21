@@ -61,6 +61,7 @@ import Data.Transducer (
   product,
   reduceIterate,
   reduceList,
+  reduceRepeat,
   sum,
   take,
   takeWhile,
@@ -98,6 +99,12 @@ main = do
             [ testProperty "Equivalent to []" $ \(x :: Int) (Fn (f :: Int -> Int)) (d :: Int) (t :: Int) ->
                 List.take t (List.drop d (List.iterate f x))
                   === reduceIterate (drop d |> take t |> intoList) f x
+            ]
+        , testGroup
+            "repeat"
+            [ testProperty "Equivalent to []" $ \(x :: Int) (d :: Int) (t :: Int) ->
+                List.take t (List.drop d (List.repeat x))
+                  === reduceRepeat (drop d |> take t |> intoList) x
             ]
         , testGroup
             "sum"
