@@ -59,6 +59,7 @@ import Data.Transducer (
   null,
   or,
   product,
+  reduceIterate,
   reduceList,
   sum,
   take,
@@ -91,6 +92,12 @@ main = do
             "NonEmpty"
             [ testProperty "nonEmpty . reduceList intoList = reduceList intoNonEmpty" $ \(xs :: [Int]) ->
                 nonEmpty (reduceList intoList xs) === reduceList intoNonEmpty xs
+            ]
+        , testGroup
+            "iterate"
+            [ testProperty "Equivalent to []" $ \(x :: Int) (Fn (f :: Int -> Int)) (d :: Int) (t :: Int) ->
+                List.take t (List.drop d (List.iterate f x))
+                  === reduceIterate (drop d |> take t |> intoList) f x
             ]
         , testGroup
             "sum"
