@@ -63,6 +63,7 @@ module Data.Transducer (
   -- * Building Blocks
   Reduced (..),
   simpleStatelessReducer,
+  simpleStatelessReducer',
   statelessTransducer,
   makeTransducer,
 ) where
@@ -217,15 +218,15 @@ reduceRepeat reducer a =
 -}
 reduceReplicate :: forall (a :: Type) (r :: Type) (s :: Type). Reducer s a r -> Int -> a -> r
 reduceReplicate reducer n a =
-  let (r', s') = go (reducerStep reducer) (reducerInitState reducer) (reducerInitAcc reducer) n
+  let (r', s') = go (reducerInitState reducer) (reducerInitAcc reducer) n
    in reducerFinalize reducer s' r'
   where
-    go step s r n =
+    go s r n =
       if n <= 0
         then (r, s)
-        else case step s r a of
+        else case reducerStep reducer s r a of
           (Reduced r', s') -> (r', s')
-          (Continue r', s') -> go step s' r' (n - 1)
+          (Continue r', s') -> go s' r' (n - 1)
 
 {- | Construct a stateless reducer that consumes whole input.
 
@@ -247,6 +248,19 @@ simpleStatelessReducer acc f =
     , reducerStep = \s r a -> (Continue (f r a), s)
     }
 
+{- | Like 'simpleStatelessReducer' but with strict accumulator
+
+@since 1.0.0
+-}
+simpleStatelessReducer' :: forall (a :: Type) (r :: Type). r -> (r -> a -> r) -> Reducer () a r
+simpleStatelessReducer' acc f =
+  Reducer
+    { reducerInitState = ()
+    , reducerInitAcc = acc
+    , reducerFinalize = const id
+    , reducerStep = \s !r a -> (Continue (f r a), s)
+    }
+
 {- | Get the sum of the elements in the sequence.
 
 ===== Examples
@@ -257,7 +271,7 @@ simpleStatelessReducer acc f =
 @since 1.0.0
 -}
 sum :: forall (r :: Type). Num r => Reducer () r r
-sum = simpleStatelessReducer 0 (+)
+sum = simpleStatelessReducer' 0 (+)
 
 {- | Get the product of the elements in the sequence.
 
@@ -269,7 +283,7 @@ sum = simpleStatelessReducer 0 (+)
 @since 1.0.0
 -}
 product :: forall (r :: Type). Num r => Reducer () r r
-product = simpleStatelessReducer 1 (*)
+product = simpleStatelessReducer' 1 (*)
 
 {- | Get the largest element of the sequence.
 
@@ -284,7 +298,7 @@ Nothing
 @since 1.0.0
 -}
 maximum :: forall (a :: Type). Ord a => Reducer () a (Maybe a)
-maximum = simpleStatelessReducer Nothing (\r a -> max (Just a) r)
+maximum = simpleStatelessReducer' Nothing (\r a -> max (Just a) r)
 
 {- | Get the smallest element of the sequence.
 
@@ -299,7 +313,7 @@ Nothing
 @since 1.0.0
 -}
 minimum :: forall (a :: Type). Ord a => Reducer () a (Maybe a)
-minimum = simpleStatelessReducer Nothing $ \r a ->
+minimum = simpleStatelessReducer' Nothing $ \r a ->
   case r of
     Nothing -> Just a
     Just r' -> Just (min r' a)
@@ -314,7 +328,7 @@ minimum = simpleStatelessReducer Nothing $ \r a ->
 @since 1.0.0
 -}
 length :: forall (a :: Type). Reducer () a Int
-length = simpleStatelessReducer 0 (\acc _ -> acc + 1)
+length = simpleStatelessReducer' 0 (\acc _ -> acc + 1)
 
 {- | Compare length of the sequence against a constant. It short-circuits upon reaching @GT@
 thus terminates even on infinite sequences.
@@ -509,7 +523,7 @@ Nothing
 @since 1.0.0
 -}
 last :: forall (a :: Type). Reducer () a (Maybe a)
-last = simpleStatelessReducer Nothing (const Just)
+last = simpleStatelessReducer' Nothing (const Just)
 
 {- | Get the first element for which the passed predicate returns 'True', if exists.
 
