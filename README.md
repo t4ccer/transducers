@@ -12,6 +12,7 @@ This is a very simple yet powerful implementation, there are no type classes or 
 The `transducers-core` library has no dependencies.
 Utilities for non-`base` data structures are in separate packages:
 - `transducers-vector`
+- `transducers-containers`
 
 There is one difference between this implementation and others - reducers apart from storing initial state also store initial accumulator value.
 This just seems more intuitive for me, almost always there is only one reasonable initial value and while for `sum` it may be obvious to start with `0` but it starts to get tricky for `compareLength`.
