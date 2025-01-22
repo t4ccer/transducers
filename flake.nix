@@ -42,6 +42,7 @@
           hooks = {
             nixpkgs-fmt.enable = true;
             cabal-fmt.enable = true;
+            typos.enable = true;
             fourmolu.enable = true;
           };
         };
