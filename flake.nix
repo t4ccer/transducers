@@ -47,19 +47,28 @@
           };
         };
 
-        devShells.default = pkgs.mkShell {
-          shellHook = config.pre-commit.installationScript;
-          nativeBuildInputs = [
-            pkgs.fd
-            pkgs.haskell-language-server
-            pkgs.ghc
-            pkgs.cabal-install
-            pkgs.zlib
-            hls-alias
-            pkgs.haskellPackages.doctest
-            pkgs.haskellPackages.cabal-doctest
-          ];
-        };
+        devShells.default =
+          let
+            stackWithSystemGHC = pkgs.writeShellScriptBin "stack" ''
+              ${pkgs.stack}/bin/stack --system-ghc --no-nix "$@"
+            '';
+          in
+          pkgs.mkShell {
+            shellHook = config.pre-commit.installationScript;
+            nativeBuildInputs = [
+              pkgs.fd
+              pkgs.haskell-language-server
+              (pkgs.ghc.overrideAttrs (_: {
+                enableProfiledLibs = true;
+              }))
+              pkgs.cabal-install
+              pkgs.zlib
+              hls-alias
+              pkgs.haskellPackages.doctest
+              pkgs.haskellPackages.cabal-doctest
+              stackWithSystemGHC
+            ];
+          };
       };
   };
 }
