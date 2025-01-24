@@ -133,6 +133,7 @@ data Reducer s a r = Reducer
 
 @since 1.0.0
 -}
+{-# INLINE reduceList #-}
 reduceList :: forall (a :: Type) (r :: Type) (s :: Type). Reducer s a r -> [a] -> r
 reduceList reducer as =
   let (r', s') = go (reducerInitState reducer) (reducerInitAcc reducer) as
@@ -153,6 +154,7 @@ reduceList reducer as =
 
 @since 1.0.0
 -}
+{-# INLINE reduceNonEmpty #-}
 reduceNonEmpty :: forall (a :: Type) (r :: Type) (s :: Type). Reducer s a r -> NonEmpty a -> r
 reduceNonEmpty reducer (a :| as) = reduceList reducer (a : as)
 
@@ -168,6 +170,7 @@ Nothing
 
 @since 1.0.0
 -}
+{-# INLINE reduceSingleton #-}
 reduceSingleton :: forall (a :: Type) (r :: Type) (s :: Type). Reducer s a r -> a -> r
 reduceSingleton reducer a = reduceList reducer [a]
 
@@ -180,6 +183,7 @@ reduceSingleton reducer a = reduceList reducer [a]
 
 @since 1.0.0
 -}
+{-# INLINE reduceIterate #-}
 reduceIterate :: forall (a :: Type) (r :: Type) (s :: Type). Reducer s a r -> (a -> a) -> a -> r
 reduceIterate reducer f a =
   let (r', s') = go (reducerInitState reducer) (reducerInitAcc reducer) a
@@ -198,6 +202,7 @@ reduceIterate reducer f a =
 
 @since 1.0.0
 -}
+{-# INLINE reduceRepeat #-}
 reduceRepeat :: forall (a :: Type) (r :: Type) (s :: Type). Reducer s a r -> a -> r
 reduceRepeat reducer a =
   let (r', s') = go (reducerInitState reducer) (reducerInitAcc reducer)
@@ -216,6 +221,7 @@ reduceRepeat reducer a =
 
 @since 1.0.0
 -}
+{-# INLINE reduceReplicate #-}
 reduceReplicate :: forall (a :: Type) (r :: Type) (s :: Type). Reducer s a r -> Int -> a -> r
 reduceReplicate reducer n a =
   let (r', s') = go (reducerInitState reducer) (reducerInitAcc reducer) n
@@ -239,6 +245,7 @@ reduceReplicate reducer n a =
 
 @since 1.0.0
 -}
+{-# INLINE simpleStatelessReducer #-}
 simpleStatelessReducer :: forall (a :: Type) (r :: Type). r -> (r -> a -> r) -> Reducer () a r
 simpleStatelessReducer acc f =
   Reducer
@@ -252,6 +259,7 @@ simpleStatelessReducer acc f =
 
 @since 1.0.0
 -}
+{-# INLINE simpleStatelessReducer' #-}
 simpleStatelessReducer' :: forall (a :: Type) (r :: Type). r -> (r -> a -> r) -> Reducer () a r
 simpleStatelessReducer' acc f =
   Reducer
@@ -270,6 +278,7 @@ simpleStatelessReducer' acc f =
 
 @since 1.0.0
 -}
+{-# INLINE sum #-}
 sum :: forall (r :: Type). Num r => Reducer () r r
 sum = simpleStatelessReducer' 0 (+)
 
@@ -282,6 +291,7 @@ sum = simpleStatelessReducer' 0 (+)
 
 @since 1.0.0
 -}
+{-# INLINE product #-}
 product :: forall (r :: Type). Num r => Reducer () r r
 product = simpleStatelessReducer' 1 (*)
 
@@ -297,6 +307,7 @@ Nothing
 
 @since 1.0.0
 -}
+{-# INLINE maximum #-}
 maximum :: forall (a :: Type). Ord a => Reducer () a (Maybe a)
 maximum = simpleStatelessReducer' Nothing (\r a -> max (Just a) r)
 
@@ -312,6 +323,7 @@ Nothing
 
 @since 1.0.0
 -}
+{-# INLINE minimum #-}
 minimum :: forall (a :: Type). Ord a => Reducer () a (Maybe a)
 minimum = simpleStatelessReducer' Nothing $ \r a ->
   case r of
@@ -327,6 +339,7 @@ minimum = simpleStatelessReducer' Nothing $ \r a ->
 
 @since 1.0.0
 -}
+{-# INLINE length #-}
 length :: forall (a :: Type). Reducer () a Int
 length = simpleStatelessReducer' 0 (\acc _ -> acc + 1)
 
@@ -352,6 +365,7 @@ GT
 
 @since 1.0.0
 -}
+{-# INLINE compareLength #-}
 compareLength :: forall (a :: Type). Int -> Reducer Int a Ordering
 compareLength n =
   Reducer
@@ -382,6 +396,7 @@ True
 
 @since 1.0.0
 -}
+{-# INLINE or #-}
 or :: Reducer () Bool Bool
 or = any id
 
@@ -402,6 +417,7 @@ False
 
 @since 1.0.0
 -}
+{-# INLINE and #-}
 and :: Reducer () Bool Bool
 and = all id
 
@@ -423,6 +439,7 @@ False
 
 @since 1.0.0
 -}
+{-# INLINE all #-}
 all :: forall (a :: Type). (a -> Bool) -> Reducer () a Bool
 all pred =
   Reducer
@@ -453,6 +470,7 @@ True
 
 @since 1.0.0
 -}
+{-# INLINE any #-}
 any :: forall (a :: Type). (a -> Bool) -> Reducer () a Bool
 any pred =
   Reducer
@@ -477,6 +495,7 @@ False
 
 @since 1.0.0
 -}
+{-# INLINE null #-}
 null :: forall (a :: Type). Reducer () a Bool
 null =
   Reducer
@@ -501,6 +520,7 @@ Nothing
 
 @since 1.0.0
 -}
+{-# INLINE head #-}
 head :: forall (a :: Type). Reducer () a (Maybe a)
 head =
   Reducer
@@ -522,6 +542,7 @@ Nothing
 
 @since 1.0.0
 -}
+{-# INLINE last #-}
 last :: forall (a :: Type). Reducer () a (Maybe a)
 last = simpleStatelessReducer' Nothing (const Just)
 
@@ -538,6 +559,7 @@ Nothing
 
 @since 1.0.0
 -}
+{-# INLINE find #-}
 find :: forall (a :: Type). (a -> Bool) -> Reducer () a (Maybe a)
 find pred =
   Reducer
@@ -563,6 +585,7 @@ False
 
 @since 1.0.0
 -}
+{-# INLINE elemBy #-}
 elemBy :: forall (a :: Type). (a -> Bool) -> Reducer () a Bool
 elemBy pred =
   Reducer
@@ -587,6 +610,7 @@ False
 
 @since 1.0.0
 -}
+{-# INLINE elem #-}
 elem :: forall (a :: Type). Eq a => a -> Reducer () a Bool
 elem a = elemBy (a ==)
 
@@ -599,6 +623,7 @@ elem a = elemBy (a ==)
 
 @since 1.0.0
 -}
+{-# INLINE intoList #-}
 intoList :: forall (a :: Type). Reducer () a [a]
 intoList =
   Reducer
@@ -620,6 +645,7 @@ Nothing
 
 @since 1.0.0
 -}
+{-# INLINE intoNonEmpty #-}
 intoNonEmpty :: forall (a :: Type). Reducer () a (Maybe (NonEmpty a))
 intoNonEmpty =
   Reducer
@@ -641,6 +667,7 @@ intoNonEmpty =
 
 @since 1.0.0
 -}
+{-# INLINE zipReducers #-}
 zipReducers ::
   Reducer s1 a r1 ->
   Reducer s2 a r2 ->
@@ -658,6 +685,7 @@ Collect @fst@ into a list and sums the @snd@
 
 @since 1.0.0
 -}
+{-# INLINE zipReducersSplit #-}
 zipReducersSplit ::
   Reducer s1 a1 r1 ->
   Reducer s2 a2 r2 ->
@@ -702,6 +730,7 @@ Collect @fst@ into a list and sums the @snd@
 
 @since 1.0.0
 -}
+{-# INLINE zipReducersFork #-}
 zipReducersFork ::
   Reducer s1 a1 r1 ->
   Reducer s2 a2 r2 ->
@@ -770,6 +799,7 @@ Code that uses '|>' is equivalent to
 
 @since 1.0.0
 -}
+{-# INLINE (|>) #-}
 (|>) ::
   forall (a :: Type) (b :: Type) (r :: Type) (s1 :: Type) (s2 :: Type).
   (Reducer s1 a r -> Reducer s2 b r) ->
@@ -783,6 +813,7 @@ infixr 5 |>
 
 @since 1.0.0
 -}
+{-# INLINE statelessTransducer #-}
 statelessTransducer ::
   forall (a :: Type) (b :: Type) (r :: Type) (s :: Type).
   Reducer s a r ->
@@ -800,6 +831,7 @@ statelessTransducer reducer reducerStep =
 
 @since 1.0.0
 -}
+{-# INLINE makeTransducer #-}
 makeTransducer ::
   forall (a :: Type) (b :: Type) (r :: Type) (s1 :: Type) (s2 :: Type).
   Reducer s1 a r ->
@@ -824,6 +856,7 @@ makeTransducer reducer s2 reducerStep =
 
 @since 1.0.0
 -}
+{-# INLINE map #-}
 map ::
   forall (a :: Type) (b :: Type) (r :: Type) (s :: Type).
   (b -> a) ->
@@ -840,6 +873,7 @@ map f reducer = statelessTransducer reducer $ \s r b -> reducerStep reducer s r 
 
 @since 1.0.0
 -}
+{-# INLINE take #-}
 take ::
   forall (a :: Type) (r :: Type) (s :: Type).
   Int ->
@@ -864,6 +898,7 @@ would pass it.
 
 @since 1.0.0
 -}
+{-# INLINE takeWhile #-}
 takeWhile ::
   forall (a :: Type) (r :: Type) (s :: Type).
   (a -> Bool) ->
@@ -883,6 +918,7 @@ takeWhile pred reducer = statelessTransducer reducer $ \s r a ->
 
 @since 1.0.0
 -}
+{-# INLINE drop #-}
 drop ::
   forall (a :: Type) (r :: Type) (s :: Type).
   Int ->
@@ -907,6 +943,7 @@ even if some further value would pass it.
 
 @since 1.0.0
 -}
+{-# INLINE dropWhile #-}
 dropWhile ::
   forall (a :: Type) (r :: Type) (s :: Type).
   (a -> Bool) ->
@@ -932,6 +969,7 @@ dropWhile pred reducer = makeTransducer reducer False $ \(finishedDropping, s) r
 
 @since 1.0.0
 -}
+{-# INLINE filter #-}
 filter ::
   forall (a :: Type) (r :: Type) (s :: Type).
   (a -> Bool) ->
@@ -952,6 +990,7 @@ filter pred reducer = statelessTransducer reducer $ \s r a ->
 
 @since 1.0.0
 -}
+{-# INLINE mapMaybe #-}
 mapMaybe ::
   forall (a :: Type) (b :: Type) (r :: Type) (s :: Type).
   (b -> Maybe a) ->
@@ -971,6 +1010,7 @@ mapMaybe f reducer = statelessTransducer reducer $ \s r a ->
 
 @since 1.0.0
 -}
+{-# INLINE catMaybes #-}
 catMaybes ::
   forall (a :: Type) (r :: Type) (s :: Type).
   Reducer s a r ->
@@ -988,6 +1028,7 @@ catMaybes reducer = statelessTransducer reducer $ \s r -> \case
 
 @since 1.0.0
 -}
+{-# INLINE intersperse #-}
 intersperse ::
   forall (a :: Type) (r :: Type) (s :: Type).
   a ->
@@ -1015,6 +1056,7 @@ intersperse middle reducer = makeTransducer reducer False $ \(acc, s) r a ->
 
 @since 1.0.0
 -}
+{-# INLINE concatList #-}
 concatList ::
   forall (a :: Type) (s :: Type) (r :: Type).
   Reducer s a r ->
@@ -1037,6 +1079,7 @@ concatList reducer = statelessTransducer reducer step
 
 @since 1.0.0
 -}
+{-# INLINE concatNonEmpty #-}
 concatNonEmpty ::
   forall (a :: Type) (s :: Type) (r :: Type).
   Reducer s a r ->
@@ -1054,6 +1097,7 @@ Note that it has the same performance problems as @Data.List.nub@.
 
 @since 1.0.0
 -}
+{-# INLINE nub #-}
 nub ::
   forall (a :: Type) (s :: Type) (r :: Type).
   Eq a =>
@@ -1075,6 +1119,7 @@ Remove elements that are equal to some previous element modulo @5@.
 
 @since 1.0.0
 -}
+{-# INLINE nubBy #-}
 nubBy ::
   forall (a :: Type) (s :: Type) (r :: Type).
   (a -> a -> Bool) ->
@@ -1100,6 +1145,7 @@ Just (1,5)
 
 @since 1.0.0
 -}
+{-# INLINE uncons #-}
 uncons ::
   Reducer s a r ->
   Reducer s a (Maybe (a, r))
@@ -1127,6 +1173,7 @@ Just (6,4)
 
 @since 1.0.0
 -}
+{-# INLINE unsnoc #-}
 unsnoc ::
   Reducer s a r ->
   Reducer s a (Maybe (r, a))
