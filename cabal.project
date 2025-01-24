@@ -1,4 +1,5 @@
 packages: */*
 
+optimization: 2
 tests: true
 test-show-details: direct
