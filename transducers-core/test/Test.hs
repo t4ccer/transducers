@@ -42,6 +42,7 @@ import Data.Transducer (
   concatList,
   drop,
   dropWhile,
+  enumerate,
   filter,
   find,
   head,
@@ -332,6 +333,11 @@ main = do
             "unsnoc"
             [ testProperty "Equivalent to []" $ \(xs :: [Int]) ->
                 list_unsnoc xs === reduceList (unsnoc intoList) xs
+            ]
+        , testGroup
+            "enumerate"
+            [ testProperty "Equivalent to []" $ \(xs :: [Int]) ->
+                List.zip [0 ..] xs === reduceList (enumerate |> intoList) xs
             ]
         ]
 

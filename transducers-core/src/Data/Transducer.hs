@@ -56,6 +56,7 @@ module Data.Transducer (
   nubBy,
   uncons,
   unsnoc,
+  enumerate,
   zipReducers,
   zipReducersSplit,
   zipReducersFork,
@@ -80,6 +81,7 @@ import Data.List.NonEmpty (NonEmpty ((:|)))
 import Data.List.NonEmpty qualified as NonEmpty
 import Data.Maybe (Maybe (Just, Nothing))
 import Data.Ord (Ord (compare, max, min, (<=)), Ordering (EQ, GT, LT))
+import GHC.Base (seq)
 import GHC.Num (Num ((*), (+), (-)))
 
 import Data.Transducer.Internal (
@@ -1190,3 +1192,29 @@ unsnoc reducer =
           (Reduced r', s') -> (Reduced (Just (r', a)), s')
           (Continue r', s') -> (Continue (Just (r', a)), s')
     }
+
+{-# INLINE scan' #-}
+scan' ::
+  (acc -> a -> r -> s -> acc) ->
+  acc ->
+  Reducer s (acc, a) r ->
+  Reducer (acc, s) a r
+scan' scanStep scanInit reducer = makeTransducer reducer scanInit $ \(scanAcc, s) r a ->
+  case reducerStep reducer s r (scanAcc, a) of
+    (Reduced r', s') -> (Reduced r', (scanAcc, s'))
+    (Continue r', s') -> (Continue r', (scanAcc `seq` scanStep scanAcc a r' s', s'))
+
+{- | Associate index with each element, starting at zero.
+
+===== Examples
+
+>>> reduceList (enumerate |> intoList) ["foo", "bar"]
+[(0,"foo"),(1,"bar")]
+
+@since 1.0.0
+-}
+{-# INLINE enumerate #-}
+enumerate ::
+  Reducer s (Int, a) r ->
+  Reducer (Int, s) a r
+enumerate = scan' (\acc _ _ _ -> acc + 1) 0
