@@ -58,9 +58,10 @@
             nativeBuildInputs = [
               pkgs.fd
               pkgs.haskell-language-server
-              (pkgs.ghc.overrideAttrs (_: {
-                enableProfiledLibs = true;
-              }))
+              # (pkgs.ghc.overrideAttrs (_: {
+              #   enableProfiledLibs = true;
+              # }))
+              pkgs.ghc
               pkgs.cabal-install
               pkgs.zlib
               hls-alias

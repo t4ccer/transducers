@@ -97,6 +97,8 @@ import Data.Transducer.Internal (
 
 @since 1.0.0
 -}
+type role Reduced representational
+
 type Reduced :: Type -> Type
 data Reduced a
   = -- | The reduction finished and the reducer step should not be called anymore.
@@ -118,6 +120,8 @@ data Reducer s a r
 
 @since 1.0.0
 -}
+type role Reducer representational representational representational
+
 type Reducer :: Type -> Type -> Type -> Type
 data Reducer s a r = Reducer
   { reducerInitState :: s
