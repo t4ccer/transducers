@@ -36,6 +36,7 @@ module Data.Transducer (
   find,
   elemBy,
   elem,
+  discard,
   intoList,
   intoNonEmpty,
 
@@ -619,6 +620,25 @@ False
 {-# INLINE elem #-}
 elem :: forall (a :: Type). Eq a => a -> Reducer () a Bool
 elem a = elemBy (a ==)
+
+{- | Discard the rest of the elements. It works on infinite sequences
+
+===== Examples
+
+>>> reduceList discard [0..]
+()
+
+@since 1.0.0
+-}
+{-# INLINE discard #-}
+discard :: forall (a :: Type). Reducer () a ()
+discard =
+  Reducer
+    { reducerInitState = ()
+    , reducerInitAcc = ()
+    , reducerFinalize = \_ _ -> ()
+    , reducerStep = \s () _ -> (Reduced (), s)
+    }
 
 {- | Collect all elements into a list.
 
