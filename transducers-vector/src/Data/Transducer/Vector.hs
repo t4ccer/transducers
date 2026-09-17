@@ -16,9 +16,8 @@ module Data.Transducer.Vector (
 ) where
 
 import Control.Applicative (Applicative (pure))
-import Control.Monad (Monad)
-import Data.Function (const, id, ($))
-import Data.Int (Int)
+import Control.Monad (Functor (fmap), Monad)
+import Data.Function (id)
 import Data.Kind (Type)
 import Data.Ord ((>=))
 import Data.Vector (Vector)
@@ -26,14 +25,12 @@ import Data.Vector.Fusion.Bundle.Monadic qualified as Bundle
 import Data.Vector.Fusion.Bundle.Size (Size (Unknown))
 import Data.Vector.Fusion.Stream.Monadic (Step (Done, Skip, Yield), Stream (Stream))
 import Data.Vector.Fusion.Stream.Monadic qualified as Stream
-import Data.Vector.Fusion.Util (Id)
 import Data.Vector.Generic qualified as Generic
 import GHC.Num (Num ((+)))
 
 import Data.Transducer (
   Reduced (Continue, Reduced),
-  Reducer (Reducer, reducerFinalize, reducerInitAcc, reducerInitState, reducerStep),
-  statelessTransducer,
+  Reducer (Reducer, reducerFinalize, reducerInitState, reducerStep),
  )
 
 {- $setup
@@ -52,31 +49,29 @@ import Data.Transducer (
 @since 1.0.0
 -}
 {-# INLINEABLE reduceVector #-}
-reduceVector :: forall (a :: Type) (r :: Type) (s :: Type). Reducer s a r -> Vector a -> r
+reduceVector :: forall (a :: Type) (r :: Type). Reducer a r -> Vector a -> r
 reduceVector = reduceGenericVector
 
 {- | Like 'reduceVector' but works over generic vector interface.
 
 @since 1.0.0
 -}
-{-# SPECIALIZE reduceGenericVector :: forall (a :: Type) (r :: Type) (s :: Type). Reducer s a r -> Vector a -> r #-}
+{-# SPECIALIZE reduceGenericVector :: forall (a :: Type) (r :: Type). Reducer a r -> Vector a -> r #-}
 {-# INLINEABLE reduceGenericVector #-}
 reduceGenericVector ::
-  forall (v :: Type -> Type) (a :: Type) (r :: Type) (s :: Type).
+  forall (v :: Type -> Type) (a :: Type) (r :: Type).
   Generic.Vector v a =>
-  Reducer s a r ->
+  Reducer a r ->
   v a ->
   r
-reduceGenericVector reducer v =
-  let (b', s) = go (reducerInitState reducer) (reducerInitAcc reducer) 0 (Generic.length v) v
-   in reducerFinalize reducer s b'
+reduceGenericVector (Reducer state finalize step) v = finalize (go state 0 (Generic.length v) v)
   where
-    go s r i len v =
+    go s i len v =
       if i >= len
-        then (r, s)
-        else case reducerStep reducer s r (Generic.unsafeIndex v i) of
-          (Reduced r', s) -> (r', s)
-          (Continue r', s) -> go s r' (i + 1) len v
+        then s
+        else case step s (Generic.unsafeIndex v i) of
+          Reduced s' -> s'
+          Continue s' -> go s' (i + 1) len v
 
 {- | Run a reducer on all @Stream@ elements.
 
@@ -89,23 +84,22 @@ reduceGenericVector reducer v =
 -}
 {-# INLINEABLE reduceVectorStream #-}
 reduceVectorStream ::
-  forall (m :: Type -> Type) (a :: Type) (s :: Type) (r :: Type).
+  forall (m :: Type -> Type) (a :: Type) (r :: Type).
   Monad m =>
-  Reducer s a r ->
+  Reducer a r ->
   Stream m a ->
   m r
-reduceVectorStream reducer (Stream step ss) = do
-  (r', s) <- go (reducerInitState reducer) (reducerInitAcc reducer) ss
-  pure $ reducerFinalize reducer s r'
+reduceVectorStream (Reducer state finalize step) (Stream streamStep ss) =
+  fmap finalize (go state ss)
   where
-    go s r ss = do
-      streamR <- step ss
+    go s ss = do
+      streamR <- streamStep ss
       case streamR of
-        Yield a streamR' -> case reducerStep reducer s r a of
-          (Reduced v, s) -> pure (v, s)
-          (Continue v, s) -> go s v streamR'
-        Skip streamR' -> go s r streamR'
-        Done -> pure (r, s)
+        Yield a streamR' -> case step s a of
+          Reduced s' -> pure s'
+          Continue s' -> go s' streamR'
+        Skip streamR' -> go s streamR'
+        Done -> pure s
 
 {- | Collect all elements into a @Vector@.
 
@@ -117,23 +111,22 @@ reduceVectorStream reducer (Stream step ss) = do
 @since 1.0.0
 -}
 {-# INLINEABLE intoVector #-}
-intoVector :: forall (a :: Type). Reducer (Stream Id a) a (Vector a)
+intoVector :: forall (a :: Type). Reducer a (Vector a)
 intoVector = intoGenericVector
 
 {- | Like 'intoVector' but works over generic vector interface.
 
 @since 1.0.0
 -}
-{-# SPECIALIZE intoGenericVector :: forall (a :: Type). Reducer (Stream Id a) a (Vector a) #-}
+{-# SPECIALIZE intoGenericVector :: forall (a :: Type). Reducer a (Vector a) #-}
 {-# INLINEABLE intoGenericVector #-}
 intoGenericVector ::
-  forall (a :: Type) (v :: Type -> Type). Generic.Vector v a => Reducer (Stream Id a) a (v a)
+  forall (a :: Type) (v :: Type -> Type). Generic.Vector v a => Reducer a (v a)
 intoGenericVector =
   Reducer
     { reducerInitState = Stream.empty
-    , reducerInitAcc = Generic.empty
-    , reducerFinalize = \s _ -> Generic.unstream (Bundle.fromStream s Unknown)
-    , reducerStep = \s r a -> (Continue r, Stream.snoc s a)
+    , reducerFinalize = \s -> Generic.unstream (Bundle.fromStream s Unknown)
+    , reducerStep = \s a -> Continue (Stream.snoc s a)
     }
 
 {- | Collect all elements into a @Stream@.
@@ -147,13 +140,12 @@ Identity [1,2,3]
 -}
 {-# INLINEABLE intoVectorStream #-}
 intoVectorStream ::
-  forall (m :: Type -> Type) (a :: Type). Monad m => Reducer () a (Stream m a)
+  forall (m :: Type -> Type) (a :: Type). Monad m => Reducer a (Stream m a)
 intoVectorStream =
   Reducer
-    { reducerInitState = ()
-    , reducerInitAcc = Stream.empty
-    , reducerFinalize = const id
-    , reducerStep = \s r a -> (Continue (Stream.snoc r a), s)
+    { reducerInitState = Stream.empty
+    , reducerFinalize = id
+    , reducerStep = \s a -> Continue (Stream.snoc s a)
     }
 
 {- | Flatten a sequence of @Vector a@ into a sequence of @a@.
@@ -167,26 +159,30 @@ intoVectorStream =
 -}
 {-# INLINEABLE concatVector #-}
 concatVector ::
-  forall (a :: Type) (s :: Type) (r :: Type). Reducer s a r -> Reducer s (Vector a) r
+  forall (a :: Type) (r :: Type). Reducer a r -> Reducer (Vector a) r
 concatVector = concatGenericVector
 
 {- | Like 'concatVector' but works over generic vector interface.
 
 @since 1.0.0
 -}
-{-# SPECIALIZE concatGenericVector :: forall (a :: Type) (s :: Type) (r :: Type). Reducer s a r -> Reducer s (Vector a) r #-}
+{-# SPECIALIZE concatGenericVector :: forall (a :: Type) (r :: Type). Reducer a r -> Reducer (Vector a) r #-}
 {-# INLINEABLE concatGenericVector #-}
 concatGenericVector ::
-  forall (v :: Type -> Type) (a :: Type) (s :: Type) (r :: Type).
+  forall (v :: Type -> Type) (a :: Type) (r :: Type).
   Generic.Vector v a =>
-  Reducer s a r ->
-  Reducer s (v a) r
-concatGenericVector reducer = statelessTransducer reducer (step 0)
+  Reducer a r ->
+  Reducer (v a) r
+concatGenericVector (Reducer state finalize step) =
+  Reducer
+    { reducerInitState = state
+    , reducerFinalize = finalize
+    , reducerStep = step' 0
+    }
   where
-    step :: Int -> s -> r -> v a -> (Reduced r, s)
-    step i s r v =
+    step' i s v =
       if i >= Generic.length v
-        then (Continue r, s)
-        else case reducerStep reducer s r (Generic.unsafeIndex v i) of
-          (Reduced r', s') -> (Reduced r', s')
-          (Continue r', s') -> step (i + 1) s' r' v
+        then Continue s
+        else case step s (Generic.unsafeIndex v i) of
+          Reduced s' -> Reduced s'
+          Continue s' -> step' (i + 1) s' v

@@ -1,3 +1,5 @@
+{-# LANGUAGE NoFieldSelectors #-}
+
 {- |
 'Reducer's are generalized data processing steps that can be reused across multiple collections.
 They process elements one by one, can carry state, and have ability to short-circuit.
@@ -64,10 +66,8 @@ module Data.Transducer (
 
   -- * Building Blocks
   Reduced (..),
-  simpleStatelessReducer,
-  simpleStatelessReducer',
-  statelessTransducer,
-  makeTransducer,
+  mkLinearReducer,
+  mkLinearReducer',
 ) where
 
 import Control.Monad (Functor (fmap))
@@ -107,28 +107,30 @@ data Reduced a
   | -- | The reduction is still in progress and the reducer step should be called if there are more values.
     Continue a
 
+instance Functor Reduced where
+  fmap f = \case
+    Reduced a -> Reduced (f a)
+    Continue a -> Continue (f a)
+
 {- |
 @
-data Reducer s a r
-             ^ ^ ^
-             | | |
-             | | +-- Accumulator that will be returned after reduction
+data Reducer a r
+             ^ ^
              | |
-             | +-- Elements that the reducer is processing
+             | +-- Accumulator that will be returned after reduction
              |
-             +-- Internal state of the reducer
+             +-- Elements that the reducer is processing
 @
 
 @since 1.0.0
 -}
-type role Reducer representational representational representational
+type role Reducer representational representational
 
-type Reducer :: Type -> Type -> Type -> Type
-data Reducer s a r = Reducer
+type Reducer :: Type -> Type -> Type
+data Reducer a r = forall s. Reducer
   { reducerInitState :: s
-  , reducerInitAcc :: r
-  , reducerFinalize :: s -> r -> r
-  , reducerStep :: s -> r -> a -> (Reduced r, s)
+  , reducerFinalize :: s -> r
+  , reducerStep :: s -> a -> Reduced s
   }
 
 {- | Run a reducer on all list elements.
@@ -141,16 +143,14 @@ data Reducer s a r = Reducer
 @since 1.0.0
 -}
 {-# INLINE reduceList #-}
-reduceList :: forall (a :: Type) (r :: Type) (s :: Type). Reducer s a r -> [a] -> r
-reduceList reducer as =
-  let (r', s') = go (reducerInitState reducer) (reducerInitAcc reducer) as
-   in reducerFinalize reducer s' r'
+reduceList :: forall (a :: Type) (r :: Type). Reducer a r -> [a] -> r
+reduceList (Reducer state finalize step) input = finalize (go state input)
   where
-    go s r [] = (r, s)
-    go s r (a : as) =
-      case reducerStep reducer s r a of
-        (Reduced r', s') -> (r', s')
-        (Continue r', s') -> go s' r' as
+    go s [] = s
+    go s (a : as) =
+      case step s a of
+        Reduced s' -> s'
+        Continue s' -> go s' as
 
 {- | Run a reducer on all elements of non-empty list.
 
@@ -162,7 +162,7 @@ reduceList reducer as =
 @since 1.0.0
 -}
 {-# INLINE reduceNonEmpty #-}
-reduceNonEmpty :: forall (a :: Type) (r :: Type) (s :: Type). Reducer s a r -> NonEmpty a -> r
+reduceNonEmpty :: forall (a :: Type) (r :: Type). Reducer a r -> NonEmpty a -> r
 reduceNonEmpty reducer (a :| as) = reduceList reducer (a : as)
 
 {- | Run a reducer on a single element.
@@ -178,7 +178,7 @@ Nothing
 @since 1.0.0
 -}
 {-# INLINE reduceSingleton #-}
-reduceSingleton :: forall (a :: Type) (r :: Type) (s :: Type). Reducer s a r -> a -> r
+reduceSingleton :: forall (a :: Type) (r :: Type). Reducer a r -> a -> r
 reduceSingleton reducer a = reduceList reducer [a]
 
 {- | Run a reducer on an infinite sequence of repeated function applications.
@@ -191,14 +191,12 @@ reduceSingleton reducer a = reduceList reducer [a]
 @since 1.0.0
 -}
 {-# INLINE reduceIterate #-}
-reduceIterate :: forall (a :: Type) (r :: Type) (s :: Type). Reducer s a r -> (a -> a) -> a -> r
-reduceIterate reducer f a =
-  let (r', s') = go (reducerInitState reducer) (reducerInitAcc reducer) a
-   in reducerFinalize reducer s' r'
+reduceIterate :: forall (a :: Type) (r :: Type). Reducer a r -> (a -> a) -> a -> r
+reduceIterate (Reducer state finalize step) f a = finalize (go state a)
   where
-    go s r a = case reducerStep reducer s r a of
-      (Reduced r', s') -> (r', s')
-      (Continue r', s') -> go s' r' (f a)
+    go s a = case step s a of
+      Reduced s' -> s'
+      Continue s' -> go s' (f a)
 
 {- | Run a reducer on an infinite sequence of the same value.
 
@@ -210,14 +208,12 @@ reduceIterate reducer f a =
 @since 1.0.0
 -}
 {-# INLINE reduceRepeat #-}
-reduceRepeat :: forall (a :: Type) (r :: Type) (s :: Type). Reducer s a r -> a -> r
-reduceRepeat reducer a =
-  let (r', s') = go (reducerInitState reducer) (reducerInitAcc reducer)
-   in reducerFinalize reducer s' r'
+reduceRepeat :: forall (a :: Type) (r :: Type). Reducer a r -> a -> r
+reduceRepeat (Reducer state finalize step) a = finalize (go state)
   where
-    go s r = case reducerStep reducer s r a of
-      (Reduced r', s') -> (r', s')
-      (Continue r', s') -> go s' r'
+    go s = case step s a of
+      Reduced r' -> r'
+      Continue r' -> go r'
 
 {- | Run a reducer on a finite sequence of the same value.
 
@@ -229,51 +225,47 @@ reduceRepeat reducer a =
 @since 1.0.0
 -}
 {-# INLINE reduceReplicate #-}
-reduceReplicate :: forall (a :: Type) (r :: Type) (s :: Type). Reducer s a r -> Int -> a -> r
-reduceReplicate reducer n a =
-  let (r', s') = go (reducerInitState reducer) (reducerInitAcc reducer) n
-   in reducerFinalize reducer s' r'
+reduceReplicate :: forall (a :: Type) (r :: Type). Reducer a r -> Int -> a -> r
+reduceReplicate (Reducer state finalize step) n a = finalize (go state n)
   where
-    go s r n =
+    go s n =
       if n <= 0
-        then (r, s)
-        else case reducerStep reducer s r a of
-          (Reduced r', s') -> (r', s')
-          (Continue r', s') -> go s' r' (n - 1)
+        then s
+        else case step s a of
+          Reduced s' -> s'
+          Continue s' -> go s' (n - 1)
 
 {- | Construct a stateless reducer that consumes whole input.
 
 ===== Examples
 
-@sum = simpleStatelessReducer 0 (+)@
+@sum = mkLinearReducer 0 (+)@
 
->>> reduceList (simpleStatelessReducer 0 (+)) [1, 2, 3]
+>>> reduceList (mkLinearReducer 0 (+)) [1, 2, 3]
 6
 
 @since 1.0.0
 -}
-{-# INLINE simpleStatelessReducer #-}
-simpleStatelessReducer :: forall (a :: Type) (r :: Type). r -> (r -> a -> r) -> Reducer () a r
-simpleStatelessReducer acc f =
+{-# INLINE mkLinearReducer #-}
+mkLinearReducer :: forall (a :: Type) (r :: Type). r -> (r -> a -> r) -> Reducer a r
+mkLinearReducer acc f =
   Reducer
-    { reducerInitState = ()
-    , reducerInitAcc = acc
-    , reducerFinalize = const id
-    , reducerStep = \s r a -> (Continue (f r a), s)
+    { reducerInitState = acc
+    , reducerFinalize = id
+    , reducerStep = \r a -> Continue (f r a)
     }
 
-{- | Like 'simpleStatelessReducer' but with strict accumulator
+{- | Like 'mkLinearReducer' but with strict accumulator
 
 @since 1.0.0
 -}
-{-# INLINE simpleStatelessReducer' #-}
-simpleStatelessReducer' :: forall (a :: Type) (r :: Type). r -> (r -> a -> r) -> Reducer () a r
-simpleStatelessReducer' acc f =
+{-# INLINE mkLinearReducer' #-}
+mkLinearReducer' :: forall (a :: Type) (r :: Type). r -> (r -> a -> r) -> Reducer a r
+mkLinearReducer' acc f =
   Reducer
-    { reducerInitState = ()
-    , reducerInitAcc = acc
-    , reducerFinalize = const id
-    , reducerStep = \s !r a -> (Continue (f r a), s)
+    { reducerInitState = acc
+    , reducerFinalize = id
+    , reducerStep = \ !r !a -> Continue (f r a)
     }
 
 {- | Get the sum of the elements in the sequence.
@@ -286,8 +278,8 @@ simpleStatelessReducer' acc f =
 @since 1.0.0
 -}
 {-# INLINE sum #-}
-sum :: forall (r :: Type). Num r => Reducer () r r
-sum = simpleStatelessReducer' 0 (+)
+sum :: forall (r :: Type). Num r => Reducer r r
+sum = mkLinearReducer' 0 (+)
 
 {- | Get the product of the elements in the sequence.
 
@@ -299,8 +291,8 @@ sum = simpleStatelessReducer' 0 (+)
 @since 1.0.0
 -}
 {-# INLINE product #-}
-product :: forall (r :: Type). Num r => Reducer () r r
-product = simpleStatelessReducer' 1 (*)
+product :: forall (r :: Type). Num r => Reducer r r
+product = mkLinearReducer' 1 (*)
 
 {- | Get the largest element of the sequence.
 
@@ -315,8 +307,8 @@ Nothing
 @since 1.0.0
 -}
 {-# INLINE maximum #-}
-maximum :: forall (a :: Type). Ord a => Reducer () a (Maybe a)
-maximum = simpleStatelessReducer' Nothing (\r a -> max (Just a) r)
+maximum :: forall (a :: Type). Ord a => Reducer a (Maybe a)
+maximum = mkLinearReducer' Nothing (\r a -> max (Just a) r)
 
 {- | Get the smallest element of the sequence.
 
@@ -331,8 +323,8 @@ Nothing
 @since 1.0.0
 -}
 {-# INLINE minimum #-}
-minimum :: forall (a :: Type). Ord a => Reducer () a (Maybe a)
-minimum = simpleStatelessReducer' Nothing $ \r a ->
+minimum :: forall (a :: Type). Ord a => Reducer a (Maybe a)
+minimum = mkLinearReducer' Nothing $ \r a ->
   case r of
     Nothing -> Just a
     Just r' -> Just (min r' a)
@@ -347,8 +339,8 @@ minimum = simpleStatelessReducer' Nothing $ \r a ->
 @since 1.0.0
 -}
 {-# INLINE length #-}
-length :: forall (a :: Type). Reducer () a Int
-length = simpleStatelessReducer' 0 (\acc _ -> acc + 1)
+length :: forall (a :: Type). Reducer a Int
+length = mkLinearReducer' 0 (\acc _ -> acc + 1)
 
 {- | Compare length of the sequence against a constant. It short-circuits upon reaching @GT@
 thus terminates even on infinite sequences.
@@ -373,17 +365,16 @@ GT
 @since 1.0.0
 -}
 {-# INLINE compareLength #-}
-compareLength :: forall (a :: Type). Int -> Reducer Int a Ordering
+compareLength :: forall (a :: Type). Int -> Reducer a Ordering
 compareLength n =
   Reducer
-    { reducerInitState = 0
-    , reducerInitAcc = compare 0 n
-    , reducerFinalize = const id
-    , reducerStep = \s _ _ ->
+    { reducerInitState = (compare 0 n, 0)
+    , reducerFinalize = \(r, _) -> r
+    , reducerStep = \(_, s) _ ->
         case compare (s + 1) n of
-          LT -> (Continue LT, s + 1)
-          EQ -> (Continue EQ, s + 1)
-          GT -> (Reduced GT, s + 1)
+          LT -> Continue (LT, s + 1)
+          EQ -> Continue (EQ, s + 1)
+          GT -> Reduced (GT, s + 1)
     }
 
 {- | Get the disjunction of @Bool@s.
@@ -404,7 +395,7 @@ True
 @since 1.0.0
 -}
 {-# INLINE or #-}
-or :: Reducer () Bool Bool
+or :: Reducer Bool Bool
 or = any id
 
 {- | Get the conjunction of @Bool@s.
@@ -425,7 +416,7 @@ False
 @since 1.0.0
 -}
 {-# INLINE and #-}
-and :: Reducer () Bool Bool
+and :: Reducer Bool Bool
 and = all id
 
 {- | Get the conjunction of the results of passed predicates.
@@ -447,16 +438,15 @@ False
 @since 1.0.0
 -}
 {-# INLINE all #-}
-all :: forall (a :: Type). (a -> Bool) -> Reducer () a Bool
+all :: forall (a :: Type). (a -> Bool) -> Reducer a Bool
 all pred =
   Reducer
-    { reducerInitState = ()
-    , reducerInitAcc = True
-    , reducerFinalize = const id
-    , reducerStep = \s _ a ->
+    { reducerInitState = True
+    , reducerFinalize = id
+    , reducerStep = \_ a ->
         if pred a
-          then (Continue True, s)
-          else (Reduced False, s)
+          then Continue True
+          else Reduced False
     }
 
 {- | Get the conjunction of the results of passed predicates.
@@ -478,16 +468,15 @@ True
 @since 1.0.0
 -}
 {-# INLINE any #-}
-any :: forall (a :: Type). (a -> Bool) -> Reducer () a Bool
+any :: forall (a :: Type). (a -> Bool) -> Reducer a Bool
 any pred =
   Reducer
-    { reducerInitState = ()
-    , reducerInitAcc = False
-    , reducerFinalize = const id
-    , reducerStep = \s _ a ->
+    { reducerInitState = False
+    , reducerFinalize = id
+    , reducerStep = \_ a ->
         if pred a
-          then (Reduced True, s)
-          else (Continue False, s)
+          then Reduced True
+          else Continue False
     }
 
 {- | Check if sequence is empty.
@@ -503,13 +492,12 @@ False
 @since 1.0.0
 -}
 {-# INLINE null #-}
-null :: forall (a :: Type). Reducer () a Bool
+null :: forall (a :: Type). Reducer a Bool
 null =
   Reducer
-    { reducerInitState = ()
-    , reducerInitAcc = True
-    , reducerFinalize = const id
-    , reducerStep = \s _ _ -> (Reduced False, s)
+    { reducerInitState = True
+    , reducerFinalize = id
+    , reducerStep = \_ _ -> Reduced False
     }
 
 {- | Extract the first element if exists.
@@ -528,13 +516,12 @@ Nothing
 @since 1.0.0
 -}
 {-# INLINE head #-}
-head :: forall (a :: Type). Reducer () a (Maybe a)
+head :: forall (a :: Type). Reducer a (Maybe a)
 head =
   Reducer
-    { reducerInitState = ()
-    , reducerInitAcc = Nothing
-    , reducerFinalize = const id
-    , reducerStep = \s _ a -> (Reduced (Just a), s)
+    { reducerInitState = Nothing
+    , reducerFinalize = id
+    , reducerStep = \_ a -> Reduced (Just a)
     }
 
 {- | Extract the last element if exists.
@@ -550,8 +537,8 @@ Nothing
 @since 1.0.0
 -}
 {-# INLINE last #-}
-last :: forall (a :: Type). Reducer () a (Maybe a)
-last = simpleStatelessReducer' Nothing (const Just)
+last :: forall (a :: Type). Reducer a (Maybe a)
+last = mkLinearReducer' Nothing (const Just)
 
 {- | Get the first element for which the passed predicate returns 'True', if exists.
 
@@ -567,16 +554,15 @@ Nothing
 @since 1.0.0
 -}
 {-# INLINE find #-}
-find :: forall (a :: Type). (a -> Bool) -> Reducer () a (Maybe a)
+find :: forall (a :: Type). (a -> Bool) -> Reducer a (Maybe a)
 find pred =
   Reducer
-    { reducerInitState = ()
-    , reducerInitAcc = Nothing
-    , reducerFinalize = const id
-    , reducerStep = \s _ a ->
+    { reducerInitState = Nothing
+    , reducerFinalize = id
+    , reducerStep = \_ a ->
         if pred a
-          then (Reduced (Just a), s)
-          else (Continue Nothing, s)
+          then Reduced (Just a)
+          else Continue Nothing
     }
 
 {- | Check if for any elements the passed predicate returns 'True'.
@@ -593,16 +579,15 @@ False
 @since 1.0.0
 -}
 {-# INLINE elemBy #-}
-elemBy :: forall (a :: Type). (a -> Bool) -> Reducer () a Bool
+elemBy :: forall (a :: Type). (a -> Bool) -> Reducer a Bool
 elemBy pred =
   Reducer
-    { reducerInitState = ()
-    , reducerInitAcc = False
-    , reducerFinalize = const id
-    , reducerStep = \s _ a ->
+    { reducerInitState = False
+    , reducerFinalize = id
+    , reducerStep = \_ a ->
         if pred a
-          then (Reduced True, s)
-          else (Continue False, s)
+          then Reduced True
+          else Continue False
     }
 
 {- | Check if any elements is equal (using '==') to the one passed.
@@ -618,7 +603,7 @@ False
 @since 1.0.0
 -}
 {-# INLINE elem #-}
-elem :: forall (a :: Type). Eq a => a -> Reducer () a Bool
+elem :: forall (a :: Type). Eq a => a -> Reducer a Bool
 elem a = elemBy (a ==)
 
 {- | Discard the rest of the elements. It works on infinite sequences
@@ -631,13 +616,12 @@ elem a = elemBy (a ==)
 @since 1.0.0
 -}
 {-# INLINE discard #-}
-discard :: forall (a :: Type). Reducer () a ()
+discard :: forall (a :: Type). Reducer a ()
 discard =
   Reducer
     { reducerInitState = ()
-    , reducerInitAcc = ()
-    , reducerFinalize = \_ _ -> ()
-    , reducerStep = \s () _ -> (Reduced (), s)
+    , reducerFinalize = const ()
+    , reducerStep = \_ _ -> Reduced ()
     }
 
 {- | Collect all elements into a list.
@@ -650,13 +634,12 @@ discard =
 @since 1.0.0
 -}
 {-# INLINE intoList #-}
-intoList :: forall (a :: Type). Reducer () a [a]
+intoList :: forall (a :: Type). Reducer a [a]
 intoList =
   Reducer
-    { reducerInitState = ()
-    , reducerInitAcc = []
-    , reducerFinalize = const reverse
-    , reducerStep = \s as a -> (Continue (a : as), s)
+    { reducerInitState = []
+    , reducerFinalize = reverse
+    , reducerStep = \as a -> Continue (a : as)
     }
 
 {- | Collect all elements into a non-empty list or @Nothing@ if it does not contain any elements.
@@ -672,16 +655,15 @@ Nothing
 @since 1.0.0
 -}
 {-# INLINE intoNonEmpty #-}
-intoNonEmpty :: forall (a :: Type). Reducer () a (Maybe (NonEmpty a))
+intoNonEmpty :: forall (a :: Type). Reducer a (Maybe (NonEmpty a))
 intoNonEmpty =
   Reducer
-    { reducerInitState = ()
-    , reducerInitAcc = Nothing
-    , reducerFinalize = const (fmap NonEmpty.reverse)
-    , reducerStep = \s as a ->
+    { reducerInitState = Nothing
+    , reducerFinalize = fmap NonEmpty.reverse
+    , reducerStep = \as a ->
         case as of
-          Nothing -> (Continue (Just (a :| [])), s)
-          Just (b :| bs) -> (Continue (Just (a :| b : bs)), s)
+          Nothing -> Continue (Just (a :| []))
+          Just (b :| bs) -> Continue (Just (a :| b : bs))
     }
 
 {- | Run two reducers on the same input.
@@ -695,9 +677,10 @@ intoNonEmpty =
 -}
 {-# INLINE zipReducers #-}
 zipReducers ::
-  Reducer s1 a r1 ->
-  Reducer s2 a r2 ->
-  Reducer (ZipFinished, s1, s2) a (r1, r2)
+  forall (a :: Type) (r1 :: Type) (r2 :: Type).
+  Reducer a r1 ->
+  Reducer a r2 ->
+  Reducer a (r1, r2)
 zipReducers reducer1 reducer2 = map (\a -> (a, a)) |> zipReducersSplit reducer1 reducer2
 
 {- | Run first reducer on first element of the tuple and second reducer on the second.
@@ -713,36 +696,28 @@ Collect @fst@ into a list and sums the @snd@
 -}
 {-# INLINE zipReducersSplit #-}
 zipReducersSplit ::
-  Reducer s1 a1 r1 ->
-  Reducer s2 a2 r2 ->
-  Reducer (ZipFinished, s1, s2) (a1, a2) (r1, r2)
-zipReducersSplit reducer1 reducer2 =
+  forall (a1 :: Type) (a2 :: Type) (r1 :: Type) (r2 :: Type).
+  Reducer a1 r1 ->
+  Reducer a2 r2 ->
+  Reducer (a1, a2) (r1, r2)
+zipReducersSplit (Reducer state1 finalize1 step1) (Reducer state2 finalize2 step2) =
   Reducer
-    { reducerInitState = (ZipFinishedNone, reducerInitState reducer1, reducerInitState reducer2)
-    , reducerInitAcc = (reducerInitAcc reducer1, reducerInitAcc reducer2)
-    , reducerFinalize = \(_, s1, s2) (r1, r2) ->
-        (reducerFinalize reducer1 s1 r1, reducerFinalize reducer2 s2 r2)
-    , reducerStep = \(finished, s1, s2) (r1, r2) (a1, a2) ->
+    { reducerInitState = (ZipFinishedNone, state1, state2)
+    , reducerFinalize = \(_, s1, s2) -> (finalize1 s1, finalize2 s2)
+    , reducerStep = \(finished, s1, s2) (a1, a2) ->
         case finished of
-          ZipFinishedNone ->
-            let (r1', s1') = reducerStep reducer1 s1 r1 a1
-                (r2', s2') = reducerStep reducer2 s2 r2 a2
-             in case (r1', r2') of
-                  (Continue r1'', Continue r2'') -> (Continue (r1'', r2''), (ZipFinishedNone, s1', s2'))
-                  (Reduced r1'', Continue r2'') -> (Continue (r1'', r2''), (ZipFinished1, s1', s2'))
-                  (Continue r1'', Reduced r2'') -> (Continue (r1'', r2''), (ZipFinished2, s1', s2'))
-                  (Reduced r1'', Reduced r2'') -> (Reduced (r1'', r2''), (ZipFinishedBoth, s1', s2'))
-          ZipFinished1 ->
-            let (r2', s2') = reducerStep reducer2 s2 r2 a2
-             in case r2' of
-                  Continue r2'' -> (Continue (r1, r2''), (ZipFinished1, s1, s2'))
-                  Reduced r2'' -> (Reduced (r1, r2''), (ZipFinishedBoth, s1, s2'))
-          ZipFinished2 ->
-            let (r1', s1') = reducerStep reducer1 s1 r1 a1
-             in case r1' of
-                  Continue r1'' -> (Continue (r1'', r2), (ZipFinished1, s1', s2))
-                  Reduced r1'' -> (Reduced (r1'', r2), (ZipFinishedBoth, s1', s2))
-          ZipFinishedBoth -> (Reduced (r1, r2), (ZipFinishedBoth, s1, s2))
+          ZipFinishedNone -> case (step1 s1 a1, step2 s2 a2) of
+            (Continue s1', Continue s2') -> Continue (ZipFinishedNone, s1', s2')
+            (Reduced s1', Continue s2') -> Continue (ZipFinished1, s1', s2')
+            (Continue s1', Reduced s2') -> Continue (ZipFinished2, s1', s2')
+            (Reduced s1', Reduced s2') -> Reduced (ZipFinishedBoth, s1', s2')
+          ZipFinished1 -> case step2 s2 a2 of
+            Continue s2' -> Continue (ZipFinished1, s1, s2')
+            Reduced s2' -> Reduced (ZipFinishedBoth, s1, s2')
+          ZipFinished2 -> case step1 s1 a1 of
+            Continue s1' -> Continue (ZipFinished2, s1', s2)
+            Reduced s1' -> Reduced (ZipFinishedBoth, s1', s2)
+          ZipFinishedBoth -> Reduced (ZipFinishedBoth, s1, s2)
     }
 
 {- | Run first reducer on @Left@ elements and second reducer on @Right@s.
@@ -758,45 +733,36 @@ Collect @fst@ into a list and sums the @snd@
 -}
 {-# INLINE zipReducersFork #-}
 zipReducersFork ::
-  Reducer s1 a1 r1 ->
-  Reducer s2 a2 r2 ->
-  Reducer (ZipFinished, s1, s2) (Either a1 a2) (r1, r2)
-zipReducersFork reducer1 reducer2 =
+  forall (a1 :: Type) (a2 :: Type) (r1 :: Type) (r2 :: Type).
+  Reducer a1 r1 ->
+  Reducer a2 r2 ->
+  Reducer (Either a1 a2) (r1, r2)
+zipReducersFork (Reducer state1 finalize1 step1) (Reducer state2 finalize2 step2) =
   Reducer
-    { reducerInitState = (ZipFinishedNone, reducerInitState reducer1, reducerInitState reducer2)
-    , reducerInitAcc = (reducerInitAcc reducer1, reducerInitAcc reducer2)
-    , reducerFinalize = \(_, s1, s2) (r1, r2) ->
-        (reducerFinalize reducer1 s1 r1, reducerFinalize reducer2 s2 r2)
-    , reducerStep = \(finished, s1, s2) (r1, r2) a ->
+    { reducerInitState = (ZipFinishedNone, state1, state2)
+    , reducerFinalize = \(_, s1, s2) -> (finalize1 s1, finalize2 s2)
+    , reducerStep = \(finished, s1, s2) a ->
         case a of
           Left a1 ->
             case finished of
-              ZipFinishedNone ->
-                let (r1', s1') = reducerStep reducer1 s1 r1 a1
-                 in case r1' of
-                      Continue r1'' -> (Continue (r1'', r2), (ZipFinishedNone, s1', s2))
-                      Reduced r1'' -> (Continue (r1'', r2), (ZipFinished1, s1', s2))
-              ZipFinished1 -> (Continue (r1, r2), (ZipFinished1, s1, s2))
-              ZipFinished2 ->
-                let (r1', s1') = reducerStep reducer1 s1 r1 a1
-                 in case r1' of
-                      Continue r1'' -> (Continue (r1'', r2), (ZipFinished1, s1', s2))
-                      Reduced r1'' -> (Reduced (r1'', r2), (ZipFinished2, s1', s2))
-              ZipFinishedBoth -> (Reduced (r1, r2), (ZipFinishedBoth, s1, s2))
+              ZipFinishedNone -> case step1 s1 a1 of
+                Continue s1' -> Continue (ZipFinishedNone, s1', s2)
+                Reduced s1' -> Continue (ZipFinished1, s1', s2)
+              ZipFinished1 -> Continue (ZipFinished1, s1, s2)
+              ZipFinished2 -> case step1 s1 a1 of
+                Continue s1' -> Continue (ZipFinished2, s1', s2)
+                Reduced s1' -> Continue (ZipFinishedBoth, s1', s2)
+              ZipFinishedBoth -> Reduced (ZipFinishedBoth, s1, s2)
           Right a2 ->
             case finished of
-              ZipFinishedNone ->
-                let (r2', s2') = reducerStep reducer2 s2 r2 a2
-                 in case r2' of
-                      Continue r2'' -> (Continue (r1, r2''), (ZipFinishedNone, s1, s2'))
-                      Reduced r2'' -> (Continue (r1, r2''), (ZipFinished2, s1, s2'))
-              ZipFinished1 ->
-                let (r2', s2') = reducerStep reducer2 s2 r2 a2
-                 in case r2' of
-                      Continue r2'' -> (Continue (r1, r2''), (ZipFinished1, s1, s2'))
-                      Reduced r2'' -> (Reduced (r1, r2''), (ZipFinished2, s1, s2'))
-              ZipFinished2 -> (Continue (r1, r2), (ZipFinished2, s1, s2))
-              ZipFinishedBoth -> (Reduced (r1, r2), (ZipFinishedBoth, s1, s2))
+              ZipFinishedNone -> case step2 s2 a2 of
+                Continue s2' -> Continue (ZipFinishedNone, s1, s2')
+                Reduced s2' -> Continue (ZipFinished2, s1, s2')
+              ZipFinished1 -> case step2 s2 a2 of
+                Continue s2' -> Continue (ZipFinished1, s1, s2')
+                Reduced s2' -> Continue (ZipFinishedBoth, s1, s2')
+              ZipFinished2 -> Continue (ZipFinished2, s1, s2)
+              ZipFinishedBoth -> Reduced (ZipFinishedBoth, s1, s2)
     }
 
 -- * Transducers
@@ -827,50 +793,13 @@ Code that uses '|>' is equivalent to
 -}
 {-# INLINE (|>) #-}
 (|>) ::
-  forall (a :: Type) (b :: Type) (r :: Type) (s1 :: Type) (s2 :: Type).
-  (Reducer s1 a r -> Reducer s2 b r) ->
-  Reducer s1 a r ->
-  Reducer s2 b r
+  forall (a :: Type) (b :: Type) (r :: Type).
+  (Reducer a r -> Reducer b r) ->
+  Reducer a r ->
+  Reducer b r
 (|>) transducer = transducer
 
 infixr 5 |>
-
-{- | Create a transducer that does not change the state or accumulator.
-
-@since 1.0.0
--}
-{-# INLINE statelessTransducer #-}
-statelessTransducer ::
-  forall (a :: Type) (b :: Type) (r :: Type) (s :: Type).
-  Reducer s a r ->
-  (s -> r -> b -> (Reduced r, s)) ->
-  Reducer s b r
-statelessTransducer reducer reducerStep =
-  Reducer
-    { reducerInitState = reducerInitState reducer
-    , reducerInitAcc = reducerInitAcc reducer
-    , reducerFinalize = reducerFinalize reducer
-    , reducerStep
-    }
-
-{- | Create a transducer that does not change accumulator.
-
-@since 1.0.0
--}
-{-# INLINE makeTransducer #-}
-makeTransducer ::
-  forall (a :: Type) (b :: Type) (r :: Type) (s1 :: Type) (s2 :: Type).
-  Reducer s1 a r ->
-  s2 ->
-  ((s2, s1) -> r -> b -> (Reduced r, (s2, s1))) ->
-  Reducer (s2, s1) b r
-makeTransducer reducer s2 reducerStep =
-  Reducer
-    { reducerInitState = (s2, reducerInitState reducer)
-    , reducerInitAcc = reducerInitAcc reducer
-    , reducerFinalize = \(_, s1) r -> reducerFinalize reducer s1 r
-    , reducerStep
-    }
 
 {- | Apply passed function to every element in the sequence
 
@@ -884,11 +813,16 @@ makeTransducer reducer s2 reducerStep =
 -}
 {-# INLINE map #-}
 map ::
-  forall (a :: Type) (b :: Type) (r :: Type) (s :: Type).
+  forall (a :: Type) (b :: Type) (r :: Type).
   (b -> a) ->
-  Reducer s a r ->
-  Reducer s b r
-map f reducer = statelessTransducer reducer $ \s r b -> reducerStep reducer s r (f b)
+  Reducer a r ->
+  Reducer b r
+map f (Reducer state finalize step) =
+  Reducer
+    { reducerInitState = state
+    , reducerFinalize = finalize
+    , reducerStep = \s b -> step s (f b)
+    }
 
 {- | Take first @n@ elements from the beginning of the sequence.
 
@@ -901,16 +835,19 @@ map f reducer = statelessTransducer reducer $ \s r b -> reducerStep reducer s r 
 -}
 {-# INLINE take #-}
 take ::
-  forall (a :: Type) (r :: Type) (s :: Type).
+  forall (a :: Type) (r :: Type).
   Int ->
-  Reducer s a r ->
-  Reducer (Int, s) a r
-take n reducer = makeTransducer reducer n $ \(currN, s) r a ->
-  if currN <= 0
-    then (Reduced r, (currN, s))
-    else
-      let (r', s') = reducerStep reducer s r a
-       in (r', (currN - 1, s'))
+  Reducer a r ->
+  Reducer a r
+take n (Reducer state finalize step) =
+  Reducer
+    { reducerInitState = (n, state)
+    , reducerFinalize = \(_, state) -> finalize state
+    , reducerStep = \(currN, s) a ->
+        if currN <= 0
+          then Reduced (currN, s)
+          else fmap (currN - 1,) (step s a)
+    }
 
 {- | Keep taking elements from the sequence as long as the passed predicate returns 'True'.
 Note that it short-circuits upon first value that fails the predicate even if some further value
@@ -926,14 +863,19 @@ would pass it.
 -}
 {-# INLINE takeWhile #-}
 takeWhile ::
-  forall (a :: Type) (r :: Type) (s :: Type).
+  forall (a :: Type) (r :: Type).
   (a -> Bool) ->
-  Reducer s a r ->
-  Reducer s a r
-takeWhile pred reducer = statelessTransducer reducer $ \s r a ->
-  if pred a
-    then reducerStep reducer s r a
-    else (Reduced r, s)
+  Reducer a r ->
+  Reducer a r
+takeWhile pred (Reducer state finalize step) =
+  Reducer
+    { reducerInitState = state
+    , reducerFinalize = finalize
+    , reducerStep = \s a ->
+        if pred a
+          then step s a
+          else Reduced s
+    }
 
 {- | Drop (skip/remove) first @n@ elements from the beginning of the sequence.
 
@@ -946,16 +888,19 @@ takeWhile pred reducer = statelessTransducer reducer $ \s r a ->
 -}
 {-# INLINE drop #-}
 drop ::
-  forall (a :: Type) (r :: Type) (s :: Type).
+  forall (a :: Type) (r :: Type).
   Int ->
-  Reducer s a r ->
-  Reducer (Int, s) a r
-drop n reducer = makeTransducer reducer n $ \(currN, s) r a ->
-  if currN <= 0
-    then
-      let (r', s') = reducerStep reducer s r a
-       in (r', (currN, s'))
-    else (Continue r, (currN - 1, s))
+  Reducer a r ->
+  Reducer a r
+drop n (Reducer state finalize step) =
+  Reducer
+    { reducerInitState = (n, state)
+    , reducerFinalize = \(_, state) -> finalize state
+    , reducerStep = \(currN, s) a ->
+        if currN <= 0
+          then fmap (currN,) (step s a)
+          else Continue (currN - 1, s)
+    }
 
 {- | Keep dropping elements from the sequence as long as the passed predicate returns 'True'.
 Note that upon first value that fails the predicate the whole remaining sequence will be forwarded
@@ -971,19 +916,22 @@ even if some further value would pass it.
 -}
 {-# INLINE dropWhile #-}
 dropWhile ::
-  forall (a :: Type) (r :: Type) (s :: Type).
+  forall (a :: Type) (r :: Type).
   (a -> Bool) ->
-  Reducer s a r ->
-  Reducer (Bool, s) a r
-dropWhile pred reducer = makeTransducer reducer False $ \(finishedDropping, s) r a ->
-  if finishedDropping
-    then case reducerStep reducer s r a of
-      (r', s') -> (r', (True, s'))
-    else
-      if pred a
-        then (Continue r, (False, s))
-        else case reducerStep reducer s r a of
-          (r', s') -> (r', (True, s'))
+  Reducer a r ->
+  Reducer a r
+dropWhile pred (Reducer state finalize step) =
+  Reducer
+    { reducerInitState = (False, state)
+    , reducerFinalize = \(_, state) -> finalize state
+    , reducerStep = \(finishedDropping, s) a ->
+        if finishedDropping
+          then fmap (True,) (step s a)
+          else
+            if pred a
+              then Continue (False, s)
+              else fmap (True,) (step s a)
+    }
 
 {- | Keep only elements for which the passed predicate returns 'True'.
 
@@ -997,14 +945,19 @@ dropWhile pred reducer = makeTransducer reducer False $ \(finishedDropping, s) r
 -}
 {-# INLINE filter #-}
 filter ::
-  forall (a :: Type) (r :: Type) (s :: Type).
+  forall (a :: Type) (r :: Type).
   (a -> Bool) ->
-  Reducer s a r ->
-  Reducer s a r
-filter pred reducer = statelessTransducer reducer $ \s r a ->
-  if pred a
-    then reducerStep reducer s r a
-    else (Continue r, s)
+  Reducer a r ->
+  Reducer a r
+filter pred (Reducer state finalize step) =
+  Reducer
+    { reducerInitState = state
+    , reducerFinalize = finalize
+    , reducerStep = \s a ->
+        if pred a
+          then step s a
+          else Continue s
+    }
 
 {- | Keep only elements that are mapped to 'Just'.
 
@@ -1018,14 +971,19 @@ filter pred reducer = statelessTransducer reducer $ \s r a ->
 -}
 {-# INLINE mapMaybe #-}
 mapMaybe ::
-  forall (a :: Type) (b :: Type) (r :: Type) (s :: Type).
+  forall (a :: Type) (b :: Type) (r :: Type).
   (b -> Maybe a) ->
-  Reducer s a r ->
-  Reducer s b r
-mapMaybe f reducer = statelessTransducer reducer $ \s r a ->
-  case f a of
-    Nothing -> (Continue r, s)
-    Just a' -> reducerStep reducer s r a'
+  Reducer a r ->
+  Reducer b r
+mapMaybe f (Reducer state finalize step) =
+  Reducer
+    { reducerInitState = state
+    , reducerFinalize = finalize
+    , reducerStep = \s a ->
+        case f a of
+          Nothing -> Continue s
+          Just a' -> step s a'
+    }
 
 {- | Keep only 'Just' elements.
 
@@ -1038,12 +996,17 @@ mapMaybe f reducer = statelessTransducer reducer $ \s r a ->
 -}
 {-# INLINE catMaybes #-}
 catMaybes ::
-  forall (a :: Type) (r :: Type) (s :: Type).
-  Reducer s a r ->
-  Reducer s (Maybe a) r
-catMaybes reducer = statelessTransducer reducer $ \s r -> \case
-  Nothing -> (Continue r, s)
-  Just a -> reducerStep reducer s r a
+  forall (a :: Type) (r :: Type).
+  Reducer a r ->
+  Reducer (Maybe a) r
+catMaybes (Reducer state finalize step) =
+  Reducer
+    { reducerInitState = state
+    , reducerFinalize = finalize
+    , reducerStep = \s -> \case
+        Nothing -> Continue s
+        Just a -> step s a
+    }
 
 {- | Insert an element in between every element in the sequence.
 
@@ -1056,22 +1019,21 @@ catMaybes reducer = statelessTransducer reducer $ \s r -> \case
 -}
 {-# INLINE intersperse #-}
 intersperse ::
-  forall (a :: Type) (r :: Type) (s :: Type).
+  forall (a :: Type) (r :: Type).
   a ->
-  Reducer s a r ->
-  Reducer (Bool, s) a r
-intersperse middle reducer = makeTransducer reducer False $ \(acc, s) r a ->
-  if acc
-    then
-      let (r2, s2) = reducerStep reducer s r middle
-       in case r2 of
-            Reduced r3 -> (Reduced r3, (True, s2))
-            Continue r3 ->
-              let (r4, s3) = reducerStep reducer s2 r3 a
-               in (r4, (True, s3))
-    else
-      let (r', s') = reducerStep reducer s r a
-       in (r', (True, s'))
+  Reducer a r ->
+  Reducer a r
+intersperse middle (Reducer state finalize step) =
+  Reducer
+    { reducerInitState = (False, state)
+    , reducerFinalize = \(_, state) -> finalize state
+    , reducerStep = \(acc, s) a ->
+        if acc
+          then case step s middle of
+            Reduced s2 -> Reduced (True, s2)
+            Continue s2 -> fmap (True,) (step s2 a)
+          else fmap (True,) (step s a)
+    }
 
 {- | Flatten a sequence of @[a]@ into a sequence of @a@.
 
@@ -1084,17 +1046,21 @@ intersperse middle reducer = makeTransducer reducer False $ \(acc, s) r a ->
 -}
 {-# INLINE concatList #-}
 concatList ::
-  forall (a :: Type) (s :: Type) (r :: Type).
-  Reducer s a r ->
-  Reducer s [a] r
-concatList reducer = statelessTransducer reducer step
+  forall (a :: Type) (r :: Type).
+  Reducer a r ->
+  Reducer [a] r
+concatList (Reducer state finalize step) =
+  Reducer
+    { reducerInitState = state
+    , reducerFinalize = finalize
+    , reducerStep = step'
+    }
   where
-    step :: s -> r -> [a] -> (Reduced r, s)
-    step s r = \case
-      [] -> (Continue r, s)
-      (a : as) -> case reducerStep reducer s r a of
-        (Reduced r', s') -> (Reduced r', s')
-        (Continue r', s') -> step s' r' as
+    step' s = \case
+      [] -> Continue s
+      (a : as) -> case step s a of
+        Reduced s' -> Reduced s'
+        Continue s' -> step' s' as
 
 {- | Flatten a sequence of @NonEmpty a@ into a sequence of @a@.
 
@@ -1107,9 +1073,9 @@ concatList reducer = statelessTransducer reducer step
 -}
 {-# INLINE concatNonEmpty #-}
 concatNonEmpty ::
-  forall (a :: Type) (s :: Type) (r :: Type).
-  Reducer s a r ->
-  Reducer s (NonEmpty a) r
+  forall (a :: Type) (r :: Type).
+  Reducer a r ->
+  Reducer (NonEmpty a) r
 concatNonEmpty reducer = map NonEmpty.toList |> concatList reducer
 
 {- | Remove duplicate elements and keep only the first occurrence that are equal accordingly to '=='.
@@ -1125,10 +1091,10 @@ Note that it has the same performance problems as @Data.List.nub@.
 -}
 {-# INLINE nub #-}
 nub ::
-  forall (a :: Type) (s :: Type) (r :: Type).
+  forall (a :: Type) (r :: Type).
   Eq a =>
-  Reducer s a r ->
-  Reducer ([a], s) a r
+  Reducer a r ->
+  Reducer a r
 nub = nubBy (==)
 
 {- | Remove duplicate elements and keep only the first occurrence that are equal accordingly to passed predicate.
@@ -1147,19 +1113,23 @@ Remove elements that are equal to some previous element modulo @5@.
 -}
 {-# INLINE nubBy #-}
 nubBy ::
-  forall (a :: Type) (s :: Type) (r :: Type).
+  forall (a :: Type) (r :: Type).
   (a -> a -> Bool) ->
-  Reducer s a r ->
-  Reducer ([a], s) a r
-nubBy f reducer = makeTransducer reducer [] $ \(seen, s) r a ->
-  if list_elemBy f a seen
-    then (Continue r, (seen, s))
-    else case reducerStep reducer s r a of
-      (r', s') -> (r', (a : seen, s'))
+  Reducer a r ->
+  Reducer a r
+nubBy eq (Reducer state finalize step) =
+  Reducer
+    { reducerInitState = ([], state)
+    , reducerFinalize = \(_, state) -> finalize state
+    , reducerStep = \(seen, s) a ->
+        if list_elemBy a seen
+          then Continue (seen, s)
+          else fmap (a : seen,) (step s a)
+    }
   where
-    list_elemBy :: (a -> a -> Bool) -> a -> [a] -> Bool
-    list_elemBy _ _ [] = False
-    list_elemBy eq y (x : xs) = x `eq` y || list_elemBy eq y xs
+    list_elemBy :: a -> [a] -> Bool
+    list_elemBy _ [] = False
+    list_elemBy y (x : xs) = x `eq` y || list_elemBy y xs
 
 {- | Preserve the first element and run the passed reducer on the remaining sequence.
 'Nothing' if the sequence has no elements.
@@ -1173,20 +1143,18 @@ Just (1,5)
 -}
 {-# INLINE uncons #-}
 uncons ::
-  Reducer s a r ->
-  Reducer s a (Maybe (a, r))
-uncons reducer =
+  forall (a :: Type) (r :: Type).
+  Reducer a r ->
+  Reducer a (Maybe (a, r))
+uncons (Reducer state finalize step) =
   Reducer
-    { reducerInitState = reducerInitState reducer
-    , reducerInitAcc = Nothing
-    , reducerFinalize = \s -> \case
+    { reducerInitState = (Nothing, state)
+    , reducerFinalize = \(r, s) -> case r of
         Nothing -> Nothing
-        Just (fst, r) -> Just (fst, reducerFinalize reducer s r)
-    , reducerStep = \s mr a -> case mr of
-        Nothing -> (Continue (Just (a, reducerInitAcc reducer)), s)
-        Just (fst, r) -> case reducerStep reducer s r a of
-          (Reduced r', s') -> (Reduced (Just (fst, r')), s')
-          (Continue r', s') -> (Continue (Just (fst, r')), s')
+        Just fst -> Just (fst, finalize s)
+    , reducerStep = \(mr, s) a -> case mr of
+        Nothing -> Continue (Just a, s)
+        Just fst -> fmap (Just fst,) (step s a)
     }
 
 {- | Preserve the last element and run the passed reducer on the initial sequence.
@@ -1201,32 +1169,36 @@ Just (6,4)
 -}
 {-# INLINE unsnoc #-}
 unsnoc ::
-  Reducer s a r ->
-  Reducer s a (Maybe (r, a))
-unsnoc reducer =
+  forall (a :: Type) (r :: Type).
+  Reducer a r ->
+  Reducer a (Maybe (r, a))
+unsnoc (Reducer state finalize step) =
   Reducer
-    { reducerInitState = reducerInitState reducer
-    , reducerInitAcc = Nothing
-    , reducerFinalize = \s -> \case
+    { reducerInitState = (Nothing, state)
+    , reducerFinalize = \(r, s) -> case r of
         Nothing -> Nothing
-        Just (r, lst) -> Just (reducerFinalize reducer s r, lst)
-    , reducerStep = \s mr a -> case mr of
-        Nothing -> (Continue (Just (reducerInitAcc reducer, a)), s)
-        Just (r, lst) -> case reducerStep reducer s r lst of
-          (Reduced r', s') -> (Reduced (Just (r', a)), s')
-          (Continue r', s') -> (Continue (Just (r', a)), s')
+        Just lst -> Just (finalize s, lst)
+    , reducerStep = \(mr, s) a -> case mr of
+        Nothing -> Continue (Just a, s)
+        Just lst -> fmap (Just a,) (step s lst)
     }
 
 {-# INLINE scan' #-}
 scan' ::
-  (acc -> a -> r -> s -> acc) ->
+  forall (a :: Type) (r :: Type) (acc :: Type).
+  (acc -> a -> acc) ->
   acc ->
-  Reducer s (acc, a) r ->
-  Reducer (acc, s) a r
-scan' scanStep scanInit reducer = makeTransducer reducer scanInit $ \(scanAcc, s) r a ->
-  case reducerStep reducer s r (scanAcc, a) of
-    (Reduced r', s') -> (Reduced r', (scanAcc, s'))
-    (Continue r', s') -> (Continue r', (scanAcc `seq` scanStep scanAcc a r' s', s'))
+  Reducer (acc, a) r ->
+  Reducer a r
+scan' scanStep scanInit (Reducer state finalize step) =
+  Reducer
+    { reducerInitState = (scanInit, state)
+    , reducerFinalize = \(_, state) -> finalize state
+    , reducerStep = \(scanAcc, s) a ->
+        case step s (scanAcc, a) of
+          Reduced s' -> Reduced (scanAcc, s')
+          Continue s' -> Continue (scanAcc `seq` scanStep scanAcc a, s')
+    }
 
 {- | Associate index with each element, starting at zero.
 
@@ -1239,6 +1211,6 @@ scan' scanStep scanInit reducer = makeTransducer reducer scanInit $ \(scanAcc, s
 -}
 {-# INLINE enumerate #-}
 enumerate ::
-  Reducer s (Int, a) r ->
-  Reducer (Int, s) a r
-enumerate = scan' (\acc _ _ _ -> acc + 1) 0
+  Reducer (Int, a) r ->
+  Reducer a r
+enumerate = scan' (\acc _ -> acc + 1) 0
