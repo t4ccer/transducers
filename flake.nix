@@ -1,8 +1,8 @@
 {
-  description = "notex";
+  description = "transducers";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs";
+    nixpkgs.url = "github:t4ccer/nixpkgs?ref=t4/patchset";
 
     flake-parts = {
       url = "github:hercules-ci/flake-parts";
@@ -12,7 +12,6 @@
     pre-commit-hooks-nix = {
       url = "github:cachix/pre-commit-hooks.nix";
       inputs.nixpkgs.follows = "nixpkgs";
-      inputs.nixpkgs-stable.follows = "nixpkgs";
     };
   };
 
