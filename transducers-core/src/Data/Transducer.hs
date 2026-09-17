@@ -70,6 +70,7 @@ module Data.Transducer (
   mkLinearReducer',
 ) where
 
+import Control.Applicative (Applicative (liftA2, pure, (*>), (<*), (<*>)))
 import Control.Monad (Functor (fmap))
 import Data.Bool (Bool (False, True), (||))
 import Data.Either (Either (Left, Right))
@@ -108,6 +109,7 @@ data Reduced a
     Continue a
 
 instance Functor Reduced where
+  {-# INLINE fmap #-}
   fmap f = \case
     Reduced a -> Reduced (f a)
     Continue a -> Continue (f a)
@@ -132,6 +134,54 @@ data Reducer a r = forall s. Reducer
   , reducerFinalize :: s -> r
   , reducerStep :: s -> a -> Reduced s
   }
+
+instance Functor (Reducer a) where
+  {-# INLINE fmap #-}
+  fmap f (Reducer state finalize step) = (Reducer state (\s -> f (finalize s)) step)
+
+instance Applicative (Reducer a) where
+  {-# INLINE pure #-}
+  pure :: forall (r :: Type). r -> Reducer a r
+  pure r =
+    Reducer
+      { reducerInitState = ()
+      , reducerFinalize = const r
+      , reducerStep = \_ _ -> Reduced ()
+      }
+
+  {-# INLINE liftA2 #-}
+  liftA2 :: (x -> y -> r) -> Reducer a x -> Reducer a y -> Reducer a r
+  liftA2 f (Reducer state1 finalize1 step1) (Reducer state2 finalize2 step2) =
+    Reducer
+      { reducerInitState = (ZipFinishedNone, state1, state2)
+      , reducerFinalize = \(_, s1, s2) -> f (finalize1 s1) (finalize2 s2)
+      , reducerStep = \(finished, s1, s2) a ->
+          case finished of
+            ZipFinishedNone -> case (step1 s1 a, step2 s2 a) of
+              (Continue s1', Continue s2') -> Continue (ZipFinishedNone, s1', s2')
+              (Reduced s1', Continue s2') -> Continue (ZipFinished1, s1', s2')
+              (Continue s1', Reduced s2') -> Continue (ZipFinished2, s1', s2')
+              (Reduced s1', Reduced s2') -> Reduced (ZipFinishedBoth, s1', s2')
+            ZipFinished1 -> case step2 s2 a of
+              Continue s2' -> Continue (ZipFinished1, s1, s2')
+              Reduced s2' -> Reduced (ZipFinishedBoth, s1, s2')
+            ZipFinished2 -> case step1 s1 a of
+              Continue s1' -> Continue (ZipFinished2, s1', s2)
+              Reduced s1' -> Reduced (ZipFinishedBoth, s1', s2)
+            ZipFinishedBoth -> Reduced (ZipFinishedBoth, s1, s2)
+      }
+
+  {-# INLINE (<*>) #-}
+  (<*>) :: Reducer a (x -> r) -> Reducer a x -> Reducer a r
+  (<*>) = liftA2 id
+
+  {-# INLINE (*>) #-}
+  (*>) :: Reducer a x -> Reducer a r -> Reducer a r
+  (*>) = liftA2 (\_ r -> r)
+
+  {-# INLINE (<*) #-}
+  (<*) :: Reducer a r -> Reducer a x -> Reducer a r
+  (<*) = liftA2 const
 
 {- | Run a reducer on all list elements.
 
@@ -681,7 +731,7 @@ zipReducers ::
   Reducer a r1 ->
   Reducer a r2 ->
   Reducer a (r1, r2)
-zipReducers reducer1 reducer2 = map (\a -> (a, a)) |> zipReducersSplit reducer1 reducer2
+zipReducers = liftA2 (,)
 
 {- | Run first reducer on first element of the tuple and second reducer on the second.
 
