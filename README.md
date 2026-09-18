@@ -24,6 +24,12 @@ This just seems more intuitive for me, almost always there is only one reasonabl
 - [Blog post on stateful transducers in Haskell](https://hypirion.com/musings/haskell-transducers)
 - [Blog posst on non-stateful non-short-circuiting transducers in Haskell](https://conscientiousprogrammer.com/blog/2014/08/07/understanding-cloure-transducers-through-types/)
 
+## Doctest
+
+```
+$ cabal repl transducers-core --ghc-options=-Wno-prepositive-qualified-module --ghc-options=-Wno-missing-export-lists --ghc-options=-Wno-type-defaults --with-compiler=doctest
+```
+
 ## License
 
 Copyright (C) 2025-2026 Tomasz Maciosowski (t4ccer)
