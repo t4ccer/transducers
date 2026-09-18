@@ -54,11 +54,13 @@ library
   import:          lang
   hs-source-dirs:  src
   build-depends:
-    , containers        >=0.6.0 && <0.8
-    , transducers-core  >=1.0   && <2
+    , containers        >=0.6 && <0.9
+    , transducers-core  >=1.0 && <2
 
   -- cabal-fmt: expand src
-  exposed-modules: Data.Transducer.Sequence
+  exposed-modules:
+    Data.Transducer.Sequence
+    Data.Transducer.Set
 
 test-suite tests
   import:         lang

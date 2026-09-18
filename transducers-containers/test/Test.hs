@@ -5,6 +5,7 @@ import Data.Int (Int)
 import Data.List qualified as List
 import Data.Ord (Ord (max))
 import Data.Sequence qualified as Sequence
+import Data.Set qualified as Set
 import GHC.IO.Encoding (setLocaleEncoding, utf8)
 import System.IO (IO)
 import Test.QuickCheck ((===))
@@ -13,6 +14,7 @@ import Test.Tasty.QuickCheck (QuickCheckTests, testProperty)
 
 import Data.Transducer (intoList, reduceList, (|>))
 import Data.Transducer.Sequence (concatSeq, intoSeq, reduceSeq)
+import Data.Transducer.Set (concatSet, intoSet, reduceSet)
 
 main :: IO ()
 main = do
@@ -34,5 +36,14 @@ main = do
                 reduceSeq intoList (Sequence.fromList xs) === xs
             , testProperty "reduceList concatSeq . List.map Sequence.fromList === List.concat" $ \(xs :: [[Int]]) ->
                 reduceList (concatSeq |> intoList) (List.map Sequence.fromList xs) === List.concat xs
+            ]
+        , testGroup
+            "Set"
+            [ testProperty "reduceList intoSet = Set.fromList" $ \(xs :: [Int]) ->
+                Set.fromList xs === reduceList intoSet xs
+            , testProperty "reduceSet intoSet . Set.fromList = Set.fromList" $ \(xs :: [Int]) ->
+                reduceSet intoSet (Set.fromList xs) === Set.fromList xs
+            , testProperty "reduceList concatSet . List.map Sequence.fromList === List.concat" $ \(xs :: [[Int]]) ->
+                reduceList (concatSet |> intoSet) (List.map Set.fromList xs) === Set.fromList (List.concat xs)
             ]
         ]
