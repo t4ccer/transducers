@@ -285,7 +285,7 @@ reduceReplicate (Reducer state finalize step) n a = finalize (go state n)
           Reduced s' -> s'
           Continue s' -> go s' (n - 1)
 
-{- | Construct a stateless reducer that consumes whole input.
+{- | Construct a reducer that consumes whole input.
 
 ===== Examples
 
@@ -427,7 +427,7 @@ compareLength n =
           GT -> Reduced (GT, s + 1)
     }
 
-{- | Get the disjunction of @Bool@s.
+{- | Get the disjunction of 'Bool's.
 
 ===== Examples
 
@@ -448,7 +448,7 @@ True
 or :: Reducer Bool Bool
 or = any id
 
-{- | Get the conjunction of @Bool@s.
+{- | Get the conjunction of 'Bool's.
 
 ===== Examples
 
@@ -1268,6 +1268,7 @@ scan' scanStep scanInit (Reducer state finalize step) =
 -}
 {-# INLINE enumerate #-}
 enumerate ::
+  forall (a :: Type) (r :: Type).
   Reducer (Int, a) r ->
   Reducer a r
 enumerate = scan' (\acc _ -> acc + 1) 0
