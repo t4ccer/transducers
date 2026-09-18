@@ -17,7 +17,9 @@ import Data.List.NonEmpty (NonEmpty ((:|)), nonEmpty)
 import Data.List.NonEmpty qualified as NonEmpty
 import Data.Maybe (Maybe (Just, Nothing))
 import Data.Maybe qualified as Maybe
+import Data.Monoid qualified as Monoid
 import Data.Ord (Ord (max), Ordering (EQ, GT, LT))
+import Data.Semigroup qualified as Semigroup
 import GHC.IO.Encoding (setLocaleEncoding, utf8)
 import GHC.Num (Num ((+)))
 import GHC.Real (even)
@@ -66,6 +68,7 @@ import Data.Transducer (
   mapMaybe,
   maximum,
   maximum1,
+  mconcat,
   minimum,
   minimum1,
   nub,
@@ -75,9 +78,12 @@ import Data.Transducer (
   product,
   reduceIterate,
   reduceList,
+  reduceNonEmpty,
   reduceNonEmpty1,
   reduceRepeat,
   reduceReplicate,
+  sconcat,
+  sconcat1,
   sum,
   take,
   takeWhile,
@@ -305,6 +311,21 @@ main = do
             , testCase
                 "compareLength 42 [0..] = GT"
                 (reduceList (compareLength 42) ([0 ..] :: [Int]) @?= GT)
+            ]
+        , testGroup
+            "sconcat"
+            [ testProperty "Equivalent to NonEmpty" $ \(xs :: NonEmpty [Int]) ->
+                Just (Semigroup.sconcat xs) === reduceNonEmpty sconcat xs
+            ]
+        , testGroup
+            "sconcat1"
+            [ testProperty "Equivalent to NonEmpty" $ \(xs :: NonEmpty [Int]) ->
+                Semigroup.sconcat xs === reduceNonEmpty1 sconcat1 xs
+            ]
+        , testGroup
+            "mconcat"
+            [ testProperty "Equivalent to []" $ \(xs :: [[Int]]) ->
+                Monoid.mconcat xs === reduceList mconcat xs
             ]
         , testGroup
             "intersperse"

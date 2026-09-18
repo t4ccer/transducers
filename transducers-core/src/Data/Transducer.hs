@@ -44,6 +44,9 @@ module Data.Transducer (
   elemBy,
   elem,
   discard,
+  sconcat,
+  sconcat1,
+  mconcat,
   intoList,
   intoNonEmpty,
   intoNonEmpty1,
@@ -95,7 +98,9 @@ import Data.List (reverse)
 import Data.List.NonEmpty (NonEmpty ((:|)))
 import Data.List.NonEmpty qualified as NonEmpty
 import Data.Maybe (Maybe (Just, Nothing))
+import Data.Monoid (Monoid (mempty))
 import Data.Ord (Ord (compare, max, min, (<=)), Ordering (EQ, GT, LT))
+import Data.Semigroup (Semigroup, (<>))
 import GHC.Base (seq)
 import GHC.Num (Num ((*), (+), (-)))
 
@@ -107,6 +112,10 @@ import Data.Transducer.Internal (
     ZipFinishedNone
   ),
  )
+
+{- $setup
+>>> import Data.String (String)
+-}
 
 {- | Result of the reduction process.
 
@@ -200,6 +209,12 @@ instance Applicative (Reducer a) where
   {-# INLINE (<*) #-}
   (<*) :: Reducer a r -> Reducer a x -> Reducer a r
   (<*) = liftA2 const
+
+instance Semigroup r => Semigroup (Reducer a r) where
+  (<>) = liftA2 (<>)
+
+instance Monoid r => Monoid (Reducer a r) where
+  mempty = pure mempty
 
 {- | Run a reducer on all list elements.
 
@@ -782,6 +797,56 @@ discard =
     , reducerFinalize = const ()
     , reducerStep = \_ _ -> Reduced ()
     }
+
+{- | Apply '<>' to all elements in the sequence.
+
+===== Examples
+
+>>> reduceList sconcat ["hello", " ", "world"]
+Just "hello world"
+
+>>> reduceList sconcat []
+Nothing
+
+@since 1.0.0
+-}
+{-# INLINE sconcat #-}
+sconcat :: forall (a :: Type). Semigroup a => Reducer a (Maybe a)
+sconcat = mkLinearReducer' Nothing $ \acc a -> case acc of
+  Nothing -> Just a
+  Just acc -> Just (acc <> a)
+
+{- | Apply '<>' to all elements in the sequence.
+
+===== Examples
+
+>>> reduceList (sconcat1 "hello") [" ", "world"]
+"hello world"
+
+>>> reduceList (sconcat1 "hello") []
+"hello"
+
+@since 1.0.0
+-}
+{-# INLINE sconcat1 #-}
+sconcat1 :: forall (a :: Type). Semigroup a => a -> Reducer a a
+sconcat1 a = mkLinearReducer' a (<>)
+
+{- | Apply '<>' to all elements in the sequence.
+
+===== Examples
+
+>>> reduceList mconcat ["hello", " ", "world"]
+"hello world"
+
+>>> reduceList mconcat ([] :: [String])
+""
+
+@since 1.0.0
+-}
+{-# INLINE mconcat #-}
+mconcat :: forall (a :: Type). Monoid a => Reducer a a
+mconcat = mkLinearReducer' mempty (<>)
 
 {- | Collect all elements into a list.
 
