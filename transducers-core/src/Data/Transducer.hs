@@ -105,36 +105,16 @@ import GHC.Base (seq)
 import GHC.Num (Num ((*), (+), (-)))
 
 import Data.Transducer.Internal (
-  ZipFinished (
-    ZipFinished1,
-    ZipFinished2,
-    ZipFinishedBoth,
-    ZipFinishedNone
-  ),
+  Reduced (Continue, Reduced),
+  ZipFinished (ZipFinishedNone),
+  zipStepBoth,
+  zipStepLeft,
+  zipStepRight,
  )
 
 {- $setup
 >>> import Data.String (String)
 -}
-
-{- | Result of the reduction process.
-
-@since 1.0.0
--}
-type role Reduced representational
-
-type Reduced :: Type -> Type
-data Reduced a
-  = -- | The reduction finished and the reducer step should not be called anymore.
-    Reduced a
-  | -- | The reduction is still in progress and the reducer step should be called if there are more values.
-    Continue a
-
-instance Functor Reduced where
-  {-# INLINE fmap #-}
-  fmap f = \case
-    Reduced a -> Reduced (f a)
-    Continue a -> Continue (f a)
 
 unReduced :: Reduced a -> a
 unReduced = \case
@@ -182,22 +162,8 @@ instance Applicative (Reducer a) where
     Reducer
       { reducerInitState = (ZipFinishedNone, state1, state2)
       , reducerFinalize = \(_, s1, s2) -> f (finalize1 s1) (finalize2 s2)
-      , reducerStep = \(finished, s1, s2) a ->
-          case finished of
-            ZipFinishedNone -> case (step1 s1 a, step2 s2 a) of
-              (Continue s1', Continue s2') -> Continue (ZipFinishedNone, s1', s2')
-              (Reduced s1', Continue s2') -> Continue (ZipFinished1, s1', s2')
-              (Continue s1', Reduced s2') -> Continue (ZipFinished2, s1', s2')
-              (Reduced s1', Reduced s2') -> Reduced (ZipFinishedBoth, s1', s2')
-            ZipFinished1 -> case step2 s2 a of
-              Continue s2' -> Continue (ZipFinished1, s1, s2')
-              Reduced s2' -> Reduced (ZipFinishedBoth, s1, s2')
-            ZipFinished2 -> case step1 s1 a of
-              Continue s1' -> Continue (ZipFinished2, s1', s2)
-              Reduced s1' -> Reduced (ZipFinishedBoth, s1', s2)
-            ZipFinishedBoth -> Reduced (ZipFinishedBoth, s1, s2)
+      , reducerStep = \s a -> zipStepBoth step1 step2 s a a
       }
-
   {-# INLINE (<*>) #-}
   (<*>) :: Reducer a (x -> r) -> Reducer a x -> Reducer a r
   (<*>) = liftA2 id
@@ -946,20 +912,7 @@ zipReducersSplit (Reducer state1 finalize1 step1) (Reducer state2 finalize2 step
   Reducer
     { reducerInitState = (ZipFinishedNone, state1, state2)
     , reducerFinalize = \(_, s1, s2) -> (finalize1 s1, finalize2 s2)
-    , reducerStep = \(finished, s1, s2) (a1, a2) ->
-        case finished of
-          ZipFinishedNone -> case (step1 s1 a1, step2 s2 a2) of
-            (Continue s1', Continue s2') -> Continue (ZipFinishedNone, s1', s2')
-            (Reduced s1', Continue s2') -> Continue (ZipFinished1, s1', s2')
-            (Continue s1', Reduced s2') -> Continue (ZipFinished2, s1', s2')
-            (Reduced s1', Reduced s2') -> Reduced (ZipFinishedBoth, s1', s2')
-          ZipFinished1 -> case step2 s2 a2 of
-            Continue s2' -> Continue (ZipFinished1, s1, s2')
-            Reduced s2' -> Reduced (ZipFinishedBoth, s1, s2')
-          ZipFinished2 -> case step1 s1 a1 of
-            Continue s1' -> Continue (ZipFinished2, s1', s2)
-            Reduced s1' -> Reduced (ZipFinishedBoth, s1', s2)
-          ZipFinishedBoth -> Reduced (ZipFinishedBoth, s1, s2)
+    , reducerStep = \s (a1, a2) -> zipStepBoth step1 step2 s a1 a2
     }
 
 {- | Run first reducer on @Left@ elements and second reducer on @Right@s.
@@ -983,28 +936,10 @@ zipReducersFork (Reducer state1 finalize1 step1) (Reducer state2 finalize2 step2
   Reducer
     { reducerInitState = (ZipFinishedNone, state1, state2)
     , reducerFinalize = \(_, s1, s2) -> (finalize1 s1, finalize2 s2)
-    , reducerStep = \(finished, s1, s2) a ->
+    , reducerStep = \s a ->
         case a of
-          Left a1 ->
-            case finished of
-              ZipFinishedNone -> case step1 s1 a1 of
-                Continue s1' -> Continue (ZipFinishedNone, s1', s2)
-                Reduced s1' -> Continue (ZipFinished1, s1', s2)
-              ZipFinished1 -> Continue (ZipFinished1, s1, s2)
-              ZipFinished2 -> case step1 s1 a1 of
-                Continue s1' -> Continue (ZipFinished2, s1', s2)
-                Reduced s1' -> Continue (ZipFinishedBoth, s1', s2)
-              ZipFinishedBoth -> Reduced (ZipFinishedBoth, s1, s2)
-          Right a2 ->
-            case finished of
-              ZipFinishedNone -> case step2 s2 a2 of
-                Continue s2' -> Continue (ZipFinishedNone, s1, s2')
-                Reduced s2' -> Continue (ZipFinished2, s1, s2')
-              ZipFinished1 -> case step2 s2 a2 of
-                Continue s2' -> Continue (ZipFinished1, s1, s2')
-                Reduced s2' -> Continue (ZipFinishedBoth, s1, s2')
-              ZipFinished2 -> Continue (ZipFinished2, s1, s2)
-              ZipFinishedBoth -> Reduced (ZipFinishedBoth, s1, s2)
+          Left a1 -> zipStepLeft step1 s a1
+          Right a2 -> zipStepRight step2 s a2
     }
 
 -- * Transducers
