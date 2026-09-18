@@ -10,6 +10,8 @@ module Data.Transducer.Sequence (
   concatSeq,
 ) where
 
+import Data.Foldable (foldr)
+import Data.Function (id)
 import Data.Kind (Type)
 import Data.Sequence (Seq)
 import Data.Sequence qualified as Sequence
@@ -17,7 +19,7 @@ import Data.Sequence qualified as Sequence
 import Data.Transducer (
   Reduced (Continue, Reduced),
   Reducer (Reducer, reducerFinalize, reducerInitState, reducerStep),
-  mkLinearReducer,
+  mkLinearReducer',
  )
 
 {- $setup
@@ -34,14 +36,14 @@ import Data.Transducer (
 
 @since 1.0.0
 -}
+{-# INLINE reduceSeq #-}
 reduceSeq :: forall (a :: Type) (r :: Type). Reducer a r -> Seq a -> r
-reduceSeq (Reducer state finalize step) seq = finalize (go state seq)
+reduceSeq (Reducer state finalize step) seq = finalize (foldr go id seq state)
   where
-    go s Sequence.Empty = s
-    go s (a Sequence.:<| as) =
+    go a k s =
       case step s a of
         Reduced s' -> s'
-        Continue s' -> go s' as
+        Continue s' -> k s'
 
 {- | Collect all elements into a @Seq@.
 
@@ -52,8 +54,9 @@ fromList [42,45,48,51,54,57,60,63,66,69]
 
 @since 1.0.0
 -}
+{-# INLINE intoSeq #-}
 intoSeq :: forall (a :: Type). Reducer a (Seq a)
-intoSeq = mkLinearReducer Sequence.empty (Sequence.|>)
+intoSeq = mkLinearReducer' Sequence.empty (Sequence.|>)
 
 {- | Flatten a sequence of @Seq a@ into a sequence of @a@.
 
@@ -64,16 +67,15 @@ fromList [1,2,3,4,5]
 
 @since 1.0.0
 -}
+{-# INLINE concatSeq #-}
 concatSeq :: forall (a :: Type) (r :: Type). Reducer a r -> Reducer (Seq a) r
 concatSeq (Reducer state finalize step) =
   Reducer
     { reducerInitState = state
     , reducerFinalize = finalize
-    , reducerStep = step'
+    , reducerStep = \s seq -> foldr go Continue seq s
     }
   where
-    step' s = \case
-      Sequence.Empty -> Continue s
-      (a Sequence.:<| as) -> case step s a of
-        Reduced s' -> Reduced s'
-        Continue s' -> step' s' as
+    go a k s = case step s a of
+      Reduced s' -> Reduced s'
+      Continue s' -> k s'

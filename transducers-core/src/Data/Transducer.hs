@@ -315,7 +315,7 @@ mkLinearReducer' acc f =
   Reducer
     { reducerInitState = acc
     , reducerFinalize = id
-    , reducerStep = \ !r !a -> Continue (f r a)
+    , reducerStep = \r !a -> let !r' = f r a in Continue r'
     }
 
 {- | Get the sum of the elements in the sequence.
@@ -377,7 +377,7 @@ minimum :: forall (a :: Type). Ord a => Reducer a (Maybe a)
 minimum = mkLinearReducer' Nothing $ \r a ->
   case r of
     Nothing -> Just a
-    Just r' -> Just (min r' a)
+    Just r' -> let !m = min r' a in Just m
 
 {- | Get the length of the sequence.
 
@@ -896,7 +896,14 @@ take n (Reducer state finalize step) =
     , reducerStep = \(currN, s) a ->
         if currN <= 0
           then Reduced (currN, s)
-          else fmap (currN - 1,) (step s a)
+          else
+            let currN' = currN - 1
+             in case step s a of
+                  Reduced s' -> Reduced (currN', s')
+                  Continue s' ->
+                    if currN' <= 0
+                      then Reduced (currN', s')
+                      else Continue (currN', s')
     }
 
 {- | Keep taking elements from the sequence as long as the passed predicate returns 'True'.
