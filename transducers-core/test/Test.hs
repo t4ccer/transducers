@@ -8,6 +8,7 @@ module Main (main) where
 
 import Data.Bool (Bool (False, True))
 import Data.Either (Either (Left, Right))
+import Data.Eq (Eq ((==)))
 import Data.Function (id, ($))
 import Data.Int (Int)
 import Data.Kind (Type)
@@ -46,6 +47,9 @@ import Data.Transducer (
   enumerate,
   filter,
   find,
+  group,
+  groupBy,
+  groupOn,
   head,
   intersperse,
   intoList,
@@ -339,6 +343,26 @@ main = do
             "enumerate"
             [ testProperty "Equivalent to []" $ \(xs :: [Int]) ->
                 List.zip [0 ..] xs === reduceList (enumerate |> intoList) xs
+            ]
+        , testGroup
+            "group"
+            [ testProperty "Equivalent to []" $ \(xs :: [Int]) ->
+                List.group xs === reduceList (group intoList |> intoList) xs
+            ]
+        , testGroup
+            "groupBy"
+            [ testProperty "Equivalent to []" $ \(xs :: [Int]) (Fn2 (eq :: Int -> Int -> Bool)) ->
+                List.groupBy eq xs === reduceList (groupBy eq intoList |> intoList) xs
+            ]
+        , testGroup
+            "groupOn"
+            [ testCase
+                "groupOn even [1, 2, 4, 5, 7, 9, 6, 8] = [[1], [2, 4], [5, 7, 9], [6, 8]]"
+                ( reduceList (groupOn even intoList |> intoList) [1 :: Int, 2, 4, 5, 7, 9, 6, 8]
+                    @?= ([[1], [2, 4], [5, 7, 9], [6, 8]])
+                )
+            , testProperty "Equivalent to []" $ \(xs :: [Int]) (Fn (key :: Int -> Int)) ->
+                List.groupBy (\x y -> key x == key y) xs === reduceList (groupOn key intoList |> intoList) xs
             ]
         ]
 

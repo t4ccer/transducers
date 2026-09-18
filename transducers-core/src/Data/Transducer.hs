@@ -60,6 +60,9 @@ module Data.Transducer (
   uncons,
   unsnoc,
   enumerate,
+  group,
+  groupBy,
+  groupOn,
   zipReducers,
   zipReducersSplit,
   zipReducersFork,
@@ -113,6 +116,11 @@ instance Functor Reduced where
   fmap f = \case
     Reduced a -> Reduced (f a)
     Continue a -> Continue (f a)
+
+unReduced :: Reduced a -> a
+unReduced = \case
+  Reduced a -> a
+  Continue a -> a
 
 {- |
 @
@@ -1272,3 +1280,115 @@ enumerate ::
   Reducer (Int, a) r ->
   Reducer a r
 enumerate = scan' (\acc _ -> acc + 1) 0
+
+{- | Split the sequence into groups of consecutive equal elements.
+
+===== Examples
+
+>>> reduceList (group intoList |> intoList) [1,2,2,3,3,1]
+[[1],[2,2],[3,3],[1]]
+
+@since 1.0.0
+-}
+{-# INLINE group #-}
+group ::
+  forall (a :: Type) (p :: Type) (r :: Type).
+  Eq a =>
+  Reducer a p ->
+  Reducer p r ->
+  Reducer a r
+group = groupBy (==)
+
+{- | Split the sequence into groups of consecutive elements for which the passed predicate
+returns 'True' when applied to the first element of the group and the current element.
+
+===== Examples
+
+Get non-decreasing sub-sequences
+
+>>> reduceList (groupBy (\x y -> x <= y) intoList |> intoList) [3,4,5,1,2,6,0]
+[[3,4,5],[1,2,6],[0]]
+
+@since 1.0.0
+-}
+{-# INLINE groupBy #-}
+groupBy ::
+  forall (a :: Type) (p :: Type) (r :: Type).
+  (a -> a -> Bool) ->
+  Reducer a p ->
+  Reducer p r ->
+  Reducer a r
+groupBy eq = groupByKey id eq
+
+{- | Split the sequence into groups of consecutive elements that map to the same key.
+
+===== Examples
+
+>>> import GHC.Real (even)
+>>> reduceList (groupOn even intoList |> intoList) [1,2,4,5,7,9,6,8]
+[[1],[2,4],[5,7,9],[6,8]]
+
+@since 1.0.0
+-}
+{-# INLINE groupOn #-}
+groupOn ::
+  forall (k :: Type) (a :: Type) (p :: Type) (r :: Type).
+  Eq k =>
+  (a -> k) ->
+  Reducer a p ->
+  Reducer p r ->
+  Reducer a r
+groupOn key = groupByKey key (\k a -> k == key a)
+
+{- | Split the sequence into groups of consecutive elements.
+
+===== Examples
+
+Group elements that are at most 2 greater than the first element of the group.
+
+>>> reduceList (groupByKey (+ 2) (\bound x -> x <= bound) intoList |> intoList) [1,2,3,4,5,10,11,12,13]
+[[1,2,3],[4,5],[10,11,12],[13]]
+-}
+{-# INLINE groupByKey #-}
+groupByKey ::
+  forall (k :: Type) (a :: Type) (p :: Type) (r :: Type).
+  (a -> k) ->
+  (k -> a -> Bool) ->
+  Reducer a p ->
+  Reducer p r ->
+  Reducer a r
+groupByKey key sameGroup (Reducer groupState groupFinalize groupStep) =
+  groupByKeyWith key sameGroup (groupStep groupState) groupFinalize groupStep
+
+-- | Internal building block for `group*` functions
+{-# INLINE groupByKeyWith #-}
+groupByKeyWith ::
+  forall (k :: Type) (a :: Type) (g :: Type) (p :: Type) (r :: Type).
+  (a -> k) ->
+  (k -> a -> Bool) ->
+  (a -> Reduced g) ->
+  (g -> p) ->
+  (g -> a -> Reduced g) ->
+  Reducer p r ->
+  Reducer a r
+groupByKeyWith key sameGroup groupSeed groupFinalize groupStep (Reducer state finalize step) =
+  Reducer
+    { reducerInitState = (Nothing, state)
+    , reducerFinalize = \(current, s) ->
+        case current of
+          Nothing -> finalize s
+          Just (_, g) -> case step s (groupFinalize (unReduced g)) of
+            Reduced s' -> finalize s'
+            Continue s' -> finalize s'
+    , reducerStep = \(current, s) a ->
+        case current of
+          Nothing -> Continue (Just (key a, groupSeed a), s)
+          Just (k, g) ->
+            if sameGroup k a
+              then case g of
+                Reduced _ -> Continue (current, s)
+                Continue gs -> Continue (Just (k, groupStep gs a), s)
+              else case step s (groupFinalize (unReduced g)) of
+                Reduced s' -> Reduced (Nothing, s')
+                Continue s' -> Continue (Just (key a, groupSeed a), s')
+    }
