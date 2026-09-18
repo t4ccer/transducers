@@ -16,6 +16,7 @@ module Data.Transducer (
   -- * Runners
   reduceList,
   reduceNonEmpty,
+  reduceNonEmpty1,
   reduceSingleton,
   reduceIterate,
   reduceRepeat,
@@ -29,18 +30,23 @@ module Data.Transducer (
   sum,
   product,
   maximum,
+  maximum1,
   minimum,
+  minimum1,
   length,
   compareLength,
   null,
   head,
+  head1,
   last,
+  last1,
   find,
   elemBy,
   elem,
   discard,
   intoList,
   intoNonEmpty,
+  intoNonEmpty1,
 
   -- * Transducers
   (|>),
@@ -61,11 +67,15 @@ module Data.Transducer (
   unsnoc,
   enumerate,
   group,
+  group1,
   groupBy,
+  groupBy1,
   groupOn,
+  groupOn1,
   zipReducers,
   zipReducersSplit,
   zipReducersFork,
+  feed1,
 
   -- * Building Blocks
   Reduced (..),
@@ -223,6 +233,20 @@ reduceList (Reducer state finalize step) input = finalize (go state input)
 reduceNonEmpty :: forall (a :: Type) (r :: Type). Reducer a r -> NonEmpty a -> r
 reduceNonEmpty reducer (a :| as) = reduceList reducer (a : as)
 
+{- | Run a non-empty reducer on all elements of non-empty list.
+
+===== Examples
+
+>>> reduceNonEmpty1 maximum1 (2 :| [1,4,3])
+4
+
+@since 1.0.0
++
+-}
+{-# INLINE reduceNonEmpty1 #-}
+reduceNonEmpty1 :: forall (a :: Type) (r :: Type). (a -> Reducer a r) -> NonEmpty a -> r
+reduceNonEmpty1 mkReducer (a :| as) = reduceList (mkReducer a) as
+
 {- | Run a reducer on a single element.
 
 ===== Examples
@@ -326,6 +350,29 @@ mkLinearReducer' acc f =
     , reducerStep = \r !a -> let !r' = f r a in Continue r'
     }
 
+{- | Feed one element to the reducer before the rest of the sequence.
+
+===== Examples
+
+>>> reduceList (feed1 1 |> intoList) [2, 3]
+[1,2,3]
+
+@since 1.0.0
+-}
+{-# INLINE feed1 #-}
+feed1 :: forall (a :: Type) (r :: Type). a -> Reducer a r -> Reducer a r
+feed1 a (Reducer state finalize step) =
+  case step state a of
+    Continue state' -> Reducer state' finalize step
+    Reduced state' -> Reducer state' finalize (\s _ -> Reduced s)
+
+{-# INLINE feedReduced #-}
+feedReduced :: forall (a :: Type) (r :: Type). a -> Reducer a r -> Reduced (Reducer a r)
+feedReduced a (Reducer state finalize step) =
+  case step state a of
+    Continue state' -> Continue (Reducer state' finalize step)
+    Reduced state' -> Reduced (Reducer state' finalize step)
+
 {- | Get the sum of the elements in the sequence.
 
 ===== Examples
@@ -368,6 +415,20 @@ Nothing
 maximum :: forall (a :: Type). Ord a => Reducer a (Maybe a)
 maximum = mkLinearReducer' Nothing (\r a -> max (Just a) r)
 
+{- | Get the largest element of the non-empty sequence.
+
+===== Examples
+
+>>> reduceNonEmpty1 maximum1 (2 :| [1,4,3])
+4
+
+@since 1.0.0
++
+-}
+{-# INLINE maximum1 #-}
+maximum1 :: forall (a :: Type). Ord a => a -> Reducer a a
+maximum1 a = mkLinearReducer' a max
+
 {- | Get the smallest element of the sequence.
 
 ===== Examples
@@ -386,6 +447,20 @@ minimum = mkLinearReducer' Nothing $ \r a ->
   case r of
     Nothing -> Just a
     Just r' -> let !m = min r' a in Just m
+
+{- | Get the largest element of the non-empty sequence.
+
+===== Examples
+
+>>> reduceNonEmpty1 minimum1 (2 :| [1,4,3])
+1
+
+@since 1.0.0
++
+-}
+{-# INLINE minimum1 #-}
+minimum1 :: forall (a :: Type). Ord a => a -> Reducer a a
+minimum1 a = mkLinearReducer' a min
 
 {- | Get the length of the sequence.
 
@@ -582,6 +657,19 @@ head =
     , reducerStep = \_ a -> Reduced (Just a)
     }
 
+{- | Extract the first element from non-empty sequence.
+
+===== Examples
+
+>>> reduceNonEmpty1 head1 (2 :| [1,4,3])
+2
+
+@since 1.0.0
+-}
+{-# INLINE head1 #-}
+head1 :: forall (a :: Type). a -> Reducer a a
+head1 = pure
+
 {- | Extract the last element if exists.
 
 ===== Examples
@@ -597,6 +685,19 @@ Nothing
 {-# INLINE last #-}
 last :: forall (a :: Type). Reducer a (Maybe a)
 last = mkLinearReducer' Nothing (const Just)
+
+{- | Extract the last element from non-empty sequence.
+
+===== Examples
+
+>>> reduceNonEmpty1 last1 (2 :| [1,4,3])
+3
+
+@since 1.0.0
+-}
+{-# INLINE last1 #-}
+last1 :: forall (a :: Type). a -> Reducer a a
+last1 a = mkLinearReducer' a (\_ a -> a)
 
 {- | Get the first element for which the passed predicate returns 'True', if exists.
 
@@ -722,6 +823,24 @@ intoNonEmpty =
         case as of
           Nothing -> Continue (Just (a :| []))
           Just (b :| bs) -> Continue (Just (a :| b : bs))
+    }
+
+{- | Collect all elements from non-empty sequence into a non-empty list.
+
+===== Examples
+
+>>> reduceNonEmpty1 intoNonEmpty1 (1 :| [2,3])
+1 :| [2,3]
+
+@since 1.0.0
+-}
+{-# INLINE intoNonEmpty1 #-}
+intoNonEmpty1 :: forall (a :: Type). a -> Reducer a (NonEmpty a)
+intoNonEmpty1 a =
+  Reducer
+    { reducerInitState = []
+    , reducerFinalize = \acc -> a :| reverse acc
+    , reducerStep = \as a -> Continue (a : as)
     }
 
 {- | Run two reducers on the same input.
@@ -1359,6 +1478,82 @@ groupByKey ::
   Reducer a r
 groupByKey key sameGroup (Reducer groupState groupFinalize groupStep) =
   groupByKeyWith key sameGroup (groupStep groupState) groupFinalize groupStep
+
+{- | Like 'group' but takes non-empty reducer.
+
+===== Examples
+
+Run-length encoding
+
+>>> reduceList (group1 (\c -> liftA2 (,) (head1 c) (feed1 c |> length)) |> intoList) "aaabccdddd"
+[('a',3),('b',1),('c',2),('d',4)]
+
+@since 1.0.0
+-}
+{-# INLINE group1 #-}
+group1 ::
+  forall (a :: Type) (p :: Type) (r :: Type).
+  Eq a =>
+  (a -> Reducer a p) ->
+  Reducer p r ->
+  Reducer a r
+group1 = groupBy1 (==)
+
+{- | Like 'groupBy' but takes non-empty reducer.
+
+===== Examples
+
+>>> import GHC.Real (mod)
+>>> reduceList (groupBy1 (\a b -> (a `mod` 3) == (b `mod` 3)) maximum1 |> intoList) [1,4,5,9,6]
+[4,5,9]
+
+@since 1.0.0
+-}
+{-# INLINE groupBy1 #-}
+groupBy1 ::
+  forall (a :: Type) (p :: Type) (r :: Type).
+  (a -> a -> Bool) ->
+  (a -> Reducer a p) ->
+  Reducer p r ->
+  Reducer a r
+groupBy1 eq = groupByKey1 id eq
+
+{- | Like 'groupOn' but takes non-empty reducer.
+
+===== Examples
+
+>>> import GHC.Real (even)
+>>> reduceList (groupOn1 even head1 |> intoList) [1,2,4,5,7,9,6,8]
+[1,2,5,6]
+
+@since 1.0.0
+-}
+{-# INLINE groupOn1 #-}
+groupOn1 ::
+  forall (k :: Type) (a :: Type) (p :: Type) (r :: Type).
+  Eq k =>
+  (a -> k) ->
+  (a -> Reducer a p) ->
+  Reducer p r ->
+  Reducer a r
+groupOn1 key = groupByKey1 key (\k a -> k == key a)
+
+-- | Like 'groupByKey' but takes non-empty reducer.
+{-# INLINE groupByKey1 #-}
+groupByKey1 ::
+  forall (k :: Type) (a :: Type) (p :: Type) (r :: Type).
+  (a -> k) ->
+  (k -> a -> Bool) ->
+  (a -> Reducer a p) ->
+  Reducer p r ->
+  Reducer a r
+groupByKey1 key sameGroup mkGroupReducer =
+  groupByKeyWith
+    key
+    sameGroup
+    (\a -> Continue (mkGroupReducer a))
+    (\(Reducer groupState groupFinalize _) -> groupFinalize groupState)
+    (\groupReducer a -> feedReduced a groupReducer)
 
 -- | Internal building block for `group*` functions
 {-# INLINE groupByKeyWith #-}

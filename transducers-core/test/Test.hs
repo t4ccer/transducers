@@ -13,7 +13,8 @@ import Data.Function (id, ($))
 import Data.Int (Int)
 import Data.Kind (Type)
 import Data.List qualified as List
-import Data.List.NonEmpty (nonEmpty)
+import Data.List.NonEmpty (NonEmpty ((:|)), nonEmpty)
+import Data.List.NonEmpty qualified as NonEmpty
 import Data.Maybe (Maybe (Just, Nothing))
 import Data.Maybe qualified as Maybe
 import Data.Ord (Ord (max), Ordering (EQ, GT, LT))
@@ -21,10 +22,12 @@ import GHC.IO.Encoding (setLocaleEncoding, utf8)
 import GHC.Num (Num ((+)))
 import GHC.Real (even)
 import System.IO (IO)
-import Test.QuickCheck (NonEmptyList (NonEmpty), (===), pattern Fn, pattern Fn2)
+import Test.QuickCheck ((===), pattern Fn, pattern Fn2)
+import Test.QuickCheck qualified as QC (NonEmptyList (NonEmpty))
 import Test.Tasty (adjustOption, defaultMain, testGroup)
 import Test.Tasty.HUnit (testCase, (@?=))
 import Test.Tasty.QuickCheck (QuickCheckTests, testProperty)
+import Prelude (undefined)
 
 #if !(MIN_VERSION_base(4,19,0))
 import Data.Function ((.))
@@ -51,15 +54,20 @@ import Data.Transducer (
   groupBy,
   groupOn,
   head,
+  head1,
   intersperse,
   intoList,
   intoNonEmpty,
+  intoNonEmpty1,
   last,
+  last1,
   length,
   map,
   mapMaybe,
   maximum,
+  maximum1,
   minimum,
+  minimum1,
   nub,
   nubBy,
   null,
@@ -67,6 +75,7 @@ import Data.Transducer (
   product,
   reduceIterate,
   reduceList,
+  reduceNonEmpty1,
   reduceRepeat,
   reduceReplicate,
   sum,
@@ -100,6 +109,8 @@ main = do
             "NonEmpty"
             [ testProperty "nonEmpty . reduceList intoList = reduceList intoNonEmpty" $ \(xs :: [Int]) ->
                 nonEmpty (reduceList intoList xs) === reduceList intoNonEmpty xs
+            , testProperty "reduceNonEmpty1 intoNonEmpty1 = id" $ \(xs :: NonEmpty Int) ->
+                reduceNonEmpty1 intoNonEmpty1 xs === xs
             ]
         , testGroup
             "iterate"
@@ -205,27 +216,48 @@ main = do
             ]
         , testGroup
             "maximum"
-            [ testProperty "Equivalent to []" $ \(NonEmpty (xs :: [Int])) ->
+            [ testProperty "Equivalent to []" $ \(QC.NonEmpty (xs :: [Int])) ->
                 Just (List.maximum xs) === reduceList maximum xs
             , testCase "maximum [] == Nothing" (reduceList maximum ([] :: [Int]) @?= Nothing)
             ]
         , testGroup
+            "maximum1"
+            [ testProperty "Equivalent to NonEmpty" $ \(xs :: NonEmpty Int) ->
+                List.maximum xs === reduceNonEmpty1 maximum1 xs
+            ]
+        , testGroup
             "minimum"
-            [ testProperty "Equivalent to []" $ \(NonEmpty (xs :: [Int])) ->
+            [ testProperty "Equivalent to []" $ \(QC.NonEmpty (xs :: [Int])) ->
                 Just (List.minimum xs) === reduceList minimum xs
             , testCase "minimum [] = Nothing" (reduceList minimum ([] :: [Int]) @?= Nothing)
             ]
         , testGroup
+            "minimum1"
+            [ testProperty "Equivalent to NonEmpty" $ \(xs :: NonEmpty Int) ->
+                List.minimum xs === reduceNonEmpty1 minimum1 xs
+            ]
+        , testGroup
             "head"
-            [ testProperty "Equivalent to []" $ \(NonEmpty (xs :: [Int])) ->
+            [ testProperty "Equivalent to []" $ \(QC.NonEmpty (xs :: [Int])) ->
                 Just (List.head xs) === reduceList head xs
             , testCase "head [] == Nothing" (reduceList head ([] :: [Int]) @?= Nothing)
             ]
         , testGroup
+            "head1"
+            [ testProperty "Equivalent to NonEmpty" $ \(xs :: NonEmpty Int) ->
+                NonEmpty.head xs === reduceNonEmpty1 head1 xs
+            , testCase "head1 (a :| undefined) == a" (reduceNonEmpty1 head1 ('a' :| undefined) @?= 'a')
+            ]
+        , testGroup
             "last"
-            [ testProperty "Equivalent to []" $ \(NonEmpty (xs :: [Int])) ->
+            [ testProperty "Equivalent to []" $ \(QC.NonEmpty (xs :: [Int])) ->
                 Just (List.last xs) === reduceList last xs
             , testCase "last [] = Nothing" (reduceList last ([] :: [Int]) @?= Nothing)
+            ]
+        , testGroup
+            "last1"
+            [ testProperty "Equivalent to NonEmpty" $ \(xs :: NonEmpty Int) ->
+                NonEmpty.last xs === reduceNonEmpty1 last1 xs
             ]
         , testGroup
             "find"
