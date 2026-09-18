@@ -89,8 +89,8 @@ import Data.Transducer (
   takeWhile,
   uncons,
   unsnoc,
-  zipReducers,
-  zipReducersFork,
+  zip,
+  zipEither,
   (|>),
  )
 
@@ -357,22 +357,22 @@ main = do
                 List.nubBy pred xs === reduceList (nubBy pred |> intoList) xs
             ]
         , testGroup
-            "zipReducers"
+            "zip"
             [ testCase
-                "(drop 1 |> zipReducers (take 1) (take 2)) [1..] = ([2],[2,3])"
+                "(drop 1 |> zip (take 1) (take 2)) [1..] = ([2],[2,3])"
                 ( reduceList
-                    (drop 1 |> zipReducers (take 1 |> intoList) (take 2 |> intoList))
+                    (drop 1 |> zip (take 1 |> intoList) (take 2 |> intoList))
                     ([1 ..] :: [Int])
                     @?= ([2], [2, 3])
                 )
             , testCase
-                "(drop 1 |> map splitEven |> zipReducersFork head intoList) [0..6] = (Just 1,[2,4,6])"
-                ( reduceList (drop 1 |> map splitEven |> zipReducersFork head intoList) [0 .. 6]
+                "(drop 1 |> map splitEven |> zipEither head intoList) [0..6] = (Just 1,[2,4,6])"
+                ( reduceList (drop 1 |> map splitEven |> zipEither head intoList) [0 .. 6]
                     @?= (Just 1, [2, 4, 6])
                 )
             , testCase
-                "(map splitEven |> zipReducersFork head (take 3 |> last)) [1..] = (Just 1,Just 6)"
-                ( reduceList (map splitEven |> zipReducersFork head (take 3 |> last)) [1 ..]
+                "(map splitEven |> zipEither head (take 3 |> last)) [1..] = (Just 1,Just 6)"
+                ( reduceList (map splitEven |> zipEither head (take 3 |> last)) [1 ..]
                     @?= (Just 1, Just 6)
                 )
             ]

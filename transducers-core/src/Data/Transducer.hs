@@ -75,9 +75,9 @@ module Data.Transducer (
   groupBy1,
   groupOn,
   groupOn1,
-  zipReducers,
-  zipReducersSplit,
-  zipReducersFork,
+  zip,
+  zipTuple,
+  zipEither,
   feed1,
 
   -- * Building Blocks
@@ -878,18 +878,18 @@ intoNonEmpty1 a =
 
 ===== Examples
 
->>> reduceList (zipReducers sum product) [1,2,3,4]
+>>> reduceList (zip sum product) [1,2,3,4]
 (10,24)
 
 @since 1.0.0
 -}
-{-# INLINE zipReducers #-}
-zipReducers ::
+{-# INLINE zip #-}
+zip ::
   forall (a :: Type) (r1 :: Type) (r2 :: Type).
   Reducer a r1 ->
   Reducer a r2 ->
   Reducer a (r1, r2)
-zipReducers = liftA2 (,)
+zip = liftA2 (,)
 
 {- | Run first reducer on first element of the tuple and second reducer on the second.
 
@@ -897,18 +897,18 @@ zipReducers = liftA2 (,)
 
 Collect @fst@ into a list and sums the @snd@
 
->>> reduceList (zipReducersSplit intoList sum) [(1, 2), (3, 4)]
+>>> reduceList (zipTuple intoList sum) [(1, 2), (3, 4)]
 ([1,3],6)
 
 @since 1.0.0
 -}
-{-# INLINE zipReducersSplit #-}
-zipReducersSplit ::
+{-# INLINE zipTuple #-}
+zipTuple ::
   forall (a1 :: Type) (a2 :: Type) (r1 :: Type) (r2 :: Type).
   Reducer a1 r1 ->
   Reducer a2 r2 ->
   Reducer (a1, a2) (r1, r2)
-zipReducersSplit (Reducer state1 finalize1 step1) (Reducer state2 finalize2 step2) =
+zipTuple (Reducer state1 finalize1 step1) (Reducer state2 finalize2 step2) =
   Reducer
     { reducerInitState = (ZipFinishedNone, state1, state2)
     , reducerFinalize = \(_, s1, s2) -> (finalize1 s1, finalize2 s2)
@@ -921,18 +921,18 @@ zipReducersSplit (Reducer state1 finalize1 step1) (Reducer state2 finalize2 step
 
 Collect @fst@ into a list and sums the @snd@
 
->>> reduceList (zipReducersFork intoList sum) [Left 1, Right 2, Left 3, Left 4, Right 5]
+>>> reduceList (zipEither intoList sum) [Left 1, Right 2, Left 3, Left 4, Right 5]
 ([1,3,4],7)
 
 @since 1.0.0
 -}
-{-# INLINE zipReducersFork #-}
-zipReducersFork ::
+{-# INLINE zipEither #-}
+zipEither ::
   forall (a1 :: Type) (a2 :: Type) (r1 :: Type) (r2 :: Type).
   Reducer a1 r1 ->
   Reducer a2 r2 ->
   Reducer (Either a1 a2) (r1, r2)
-zipReducersFork (Reducer state1 finalize1 step1) (Reducer state2 finalize2 step2) =
+zipEither (Reducer state1 finalize1 step1) (Reducer state2 finalize2 step2) =
   Reducer
     { reducerInitState = (ZipFinishedNone, state1, state2)
     , reducerFinalize = \(_, s1, s2) -> (finalize1 s1, finalize2 s2)

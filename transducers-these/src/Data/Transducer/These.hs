@@ -1,7 +1,7 @@
 -- | A tiny set of utilities for 'These'.
 module Data.Transducer.These (
   -- * Transducers
-  zipReducersForkThese,
+  zipThese,
 ) where
 
 import Data.Kind (Type)
@@ -18,21 +18,18 @@ import Data.Transducer.Internal (ZipFinished (ZipFinishedNone), zipStepBoth, zip
 
 ===== Examples
 
->>> reduceList (zipReducersForkThese intoList intoList) [This 1, That 2, These 3 4, This 5]
+>>> reduceList (zipThese intoList intoList) [This 1, That 2, These 3 4, This 5]
 ([1,3,5],[2,4])
-
->>> reduceList (zipReducersForkThese intoList discard) [This 1, That 2, These 3 4, This 5]
-([1,3,5],())
 
 @since 1.0.0
 -}
-{-# INLINE zipReducersForkThese #-}
-zipReducersForkThese ::
+{-# INLINE zipThese #-}
+zipThese ::
   forall (a1 :: Type) (a2 :: Type) (r1 :: Type) (r2 :: Type).
   Reducer a1 r1 ->
   Reducer a2 r2 ->
   Reducer (These a1 a2) (r1, r2)
-zipReducersForkThese (Reducer state1 finalize1 step1) (Reducer state2 finalize2 step2) =
+zipThese (Reducer state1 finalize1 step1) (Reducer state2 finalize2 step2) =
   Reducer
     { reducerInitState = (ZipFinishedNone, state1, state2)
     , reducerFinalize = \(_, s1, s2) -> (finalize1 s1, finalize2 s2)

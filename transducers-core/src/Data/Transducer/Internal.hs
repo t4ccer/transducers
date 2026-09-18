@@ -28,7 +28,7 @@ instance Functor Reduced where
     Reduced a -> Reduced (f a)
     Continue a -> Continue (f a)
 
-{- | Internal state of @zipReducers*@ functions.
+{- | Internal state of @zip*@ functions.
 
 It is used to track if some reducer already short circuted to not call step function on it anymore
 but the overall combinator must still return @Continue@ to give the opportunity to both reducers

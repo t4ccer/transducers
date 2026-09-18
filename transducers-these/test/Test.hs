@@ -16,7 +16,7 @@ import Test.Tasty (adjustOption, defaultMain, testGroup)
 import Test.Tasty.QuickCheck (QuickCheckTests, testProperty)
 
 import Data.Transducer (discard, intoList, reduceList)
-import Data.Transducer.These (zipReducersForkThese)
+import Data.Transducer.These (zipThese)
 
 instance (Arbitrary a, Arbitrary b) => Arbitrary (These a b) where
   arbitrary = do
@@ -42,17 +42,17 @@ main = do
         "transducers-these"
         [ testGroup
             "Vector"
-            [ testProperty "zipReducersForkThese intoList intoList = partitionHereThere" $
+            [ testProperty "zipThese intoList intoList = partitionHereThere" $
                 \(xs :: [These Int Int]) ->
-                  reduceList (zipReducersForkThese intoList intoList) xs
+                  reduceList (zipThese intoList intoList) xs
                     === partitionHereThere xs
-            , testProperty "fst . zipReducersForkThese intoList discard = catHere" $
+            , testProperty "fst . zipThese intoList discard = catHere" $
                 \(xs :: [These Int Int]) ->
-                  fst (reduceList (zipReducersForkThese intoList discard) xs)
+                  fst (reduceList (zipThese intoList discard) xs)
                     === catHere xs
-            , testProperty "snd . zipReducersForkThese discard intoList = catHere" $
+            , testProperty "snd . zipThese discard intoList = catHere" $
                 \(xs :: [These Int Int]) ->
-                  snd (reduceList (zipReducersForkThese discard intoList) xs)
+                  snd (reduceList (zipThese discard intoList) xs)
                     === catThere xs
             ]
         ]
