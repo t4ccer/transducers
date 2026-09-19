@@ -79,6 +79,10 @@ module Data.Transducer (
   zip,
   zipTuple,
   zipEither,
+  partition,
+  span,
+  break,
+  splitAt,
   feed1,
 
   -- * Building Blocks
@@ -89,7 +93,7 @@ module Data.Transducer (
 
 import Control.Applicative (Applicative (liftA2, pure, (*>), (<*), (<*>)))
 import Control.Monad (Functor (fmap))
-import Data.Bool (Bool (False, True), (||))
+import Data.Bool (Bool (False, True), not, (&&), (||))
 import Data.Either (Either (Left, Right))
 import Data.Eq (Eq ((==)))
 import Data.Foldable (Foldable)
@@ -102,7 +106,7 @@ import Data.List.NonEmpty (NonEmpty ((:|)))
 import Data.List.NonEmpty qualified as NonEmpty
 import Data.Maybe (Maybe (Just, Nothing))
 import Data.Monoid (Monoid (mempty))
-import Data.Ord (Ord (compare, max, min, (<=)), Ordering (EQ, GT, LT))
+import Data.Ord (Ord (compare, max, min, (<=), (>)), Ordering (EQ, GT, LT))
 import Data.Semigroup (Semigroup, (<>))
 import GHC.Base (seq)
 import GHC.Num (Num ((*), (+), (-)))
@@ -953,6 +957,86 @@ zipEither (Reducer state1 finalize1 step1) (Reducer state2 finalize2 step2) =
         case a of
           Left a1 -> zipStepLeft step1 s a1
           Right a2 -> zipStepRight step2 s a2
+    }
+
+{- | Run first reducer if on elements that satisfy the predicate and second otherwise
+
+===== Examples
+
+>>> import GHC.Real (even)
+>>> reduceList (partition even sum intoList) [1,2,3,4,5]
+(6,[1,3,5])
+-}
+{-# INLINE partition #-}
+partition :: (a -> Bool) -> Reducer a r1 -> Reducer a r2 -> Reducer a (r1, r2)
+partition f (Reducer state1 finalize1 step1) (Reducer state2 finalize2 step2) =
+  Reducer
+    { reducerInitState = (ZipFinishedNone, state1, state2)
+    , reducerFinalize = \(_, s1, s2) -> (finalize1 s1, finalize2 s2)
+    , reducerStep = \s a -> if f a then zipStepLeft step1 s a else zipStepRight step2 s a
+    }
+
+{- | Run first reducer on the longest prefix that satisfies the predicate, then second.
+
+===== Examples
+
+>>> import GHC.Real (even)
+>>> reduceList (span even intoList intoList) [2,6,4,1,2,3,4]
+([2,6,4],[1,2,3,4])
+-}
+{-# INLINE span #-}
+span :: (a -> Bool) -> Reducer a r1 -> Reducer a r2 -> Reducer a (r1, r2)
+span f (Reducer state1 finalize1 step1) (Reducer state2 finalize2 step2) =
+  Reducer
+    { reducerInitState = (True, (ZipFinishedNone, state1, state2))
+    , reducerFinalize = \(_, (_, s1, s2)) -> (finalize1 s1, finalize2 s2)
+    , reducerStep = \(onFirst, s) a ->
+        let passed = f a
+         in if onFirst && passed
+              then fmap (True,) (zipStepLeft step1 s a)
+              else fmap (False,) (zipStepRight step2 s a)
+    }
+
+{- | Run first reducer on the longest prefix that does not satisfy the predicate, then second.
+
+@'break' p = 'span' (not . p)@
+
+===== Examples
+
+>>> import GHC.Real (odd)
+>>> reduceList (break odd intoList intoList) [2,6,4,1,2,3,4]
+([2,6,4],[1,2,3,4])
+-}
+{-# INLINE break #-}
+break :: (a -> Bool) -> Reducer a r1 -> Reducer a r2 -> Reducer a (r1, r2)
+break f (Reducer state1 finalize1 step1) (Reducer state2 finalize2 step2) =
+  Reducer
+    { reducerInitState = (True, (ZipFinishedNone, state1, state2))
+    , reducerFinalize = \(_, (_, s1, s2)) -> (finalize1 s1, finalize2 s2)
+    , reducerStep = \(onFirst, s) a ->
+        let passed = f a
+         in if onFirst && not passed
+              then fmap (True,) (zipStepLeft step1 s a)
+              else fmap (False,) (zipStepRight step2 s a)
+    }
+
+{- | Run first reducer on the first @n@ elements, then second.
+
+===== Examples
+
+>>> reduceList (splitAt 3 intoList intoList) [2,6,4,1,2,3,4]
+([2,6,4],[1,2,3,4])
+-}
+{-# INLINE splitAt #-}
+splitAt :: Int -> Reducer a r1 -> Reducer a r2 -> Reducer a (r1, r2)
+splitAt n (Reducer state1 finalize1 step1) (Reducer state2 finalize2 step2) =
+  Reducer
+    { reducerInitState = (n, (ZipFinishedNone, state1, state2))
+    , reducerFinalize = \(_, (_, s1, s2)) -> (finalize1 s1, finalize2 s2)
+    , reducerStep = \(n, s) a ->
+        if n > 0
+          then fmap (n - 1,) (zipStepLeft step1 s a)
+          else fmap (n,) (zipStepRight step2 s a)
     }
 
 -- * Transducers
