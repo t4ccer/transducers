@@ -29,7 +29,7 @@ import GHC.Num (Num ((+)))
 
 import Data.Transducer (
   Reduced (Continue, Reduced),
-  Reducer (Reducer, reducerFinalize, reducerInitState, reducerStep),
+  Reducer (Reducer, reducerFinalize, reducerState, reducerStep),
  )
 
 {- $setup
@@ -121,7 +121,7 @@ intoGenericVector ::
   forall (a :: Type) (v :: Type -> Type). Generic.Vector v a => Reducer a (v a)
 intoGenericVector =
   Reducer
-    { reducerInitState = (0, [])
+    { reducerState = (0, [])
     , reducerFinalize = \(n, as) -> Generic.unstreamR (Bundle.fromListN n as)
     , reducerStep = \(!n, as) a -> Continue (n + 1, a : as)
     }
@@ -140,7 +140,7 @@ intoVectorStream ::
   forall (m :: Type -> Type) (a :: Type). Monad m => Reducer a (Stream m a)
 intoVectorStream =
   Reducer
-    { reducerInitState = []
+    { reducerState = []
     , reducerFinalize = \as -> Stream.fromList (reverse as)
     , reducerStep = \as a -> Continue (a : as)
     }
@@ -171,7 +171,7 @@ concatGenericVector ::
   Reducer (v a) r
 concatGenericVector (Reducer state finalize step) =
   Reducer
-    { reducerInitState = state
+    { reducerState = state
     , reducerFinalize = finalize
     , reducerStep = step' 0
     }

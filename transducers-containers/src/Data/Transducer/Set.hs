@@ -18,8 +18,8 @@ import Prelude (flip)
 
 import Data.Transducer (
   Reduced (Continue, Reduced),
-  Reducer (Reducer, reducerFinalize, reducerInitState, reducerStep),
-  mkLinearReducer',
+  Reducer (Reducer, reducerFinalize, reducerState, reducerStep),
+  linearReducer,
   reduceFoldr,
  )
 
@@ -54,7 +54,7 @@ True
 -}
 {-# INLINE intoSet #-}
 intoSet :: forall (a :: Type). Ord a => Reducer a (Set a)
-intoSet = mkLinearReducer' Set.empty (flip Set.insert) -- TODO: Optimize
+intoSet = linearReducer Set.empty (flip Set.insert) -- TODO: Optimize
 
 {- | Flatten a sequence of @Set a@ into a sequence of @a@.
 
@@ -69,7 +69,7 @@ intoSet = mkLinearReducer' Set.empty (flip Set.insert) -- TODO: Optimize
 concatSet :: forall (a :: Type) (r :: Type). Reducer a r -> Reducer (Set a) r
 concatSet (Reducer state finalize step) =
   Reducer
-    { reducerInitState = state
+    { reducerState = state
     , reducerFinalize = finalize
     , reducerStep = \s set -> Set.foldr' go Continue set s
     }

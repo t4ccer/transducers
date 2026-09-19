@@ -56,9 +56,7 @@ library
   hs-source-dirs:  src
 
   -- cabal-fmt: expand src
-  exposed-modules:
-    Data.Transducer
-    Data.Transducer.Internal
+  exposed-modules: Data.Transducer
 
 test-suite tests
   import:         lang

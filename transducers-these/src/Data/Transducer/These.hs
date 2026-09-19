@@ -7,8 +7,13 @@ module Data.Transducer.These (
 import Data.Kind (Type)
 import Data.These (These (That, These, This))
 
-import Data.Transducer (Reducer (Reducer, reducerFinalize, reducerInitState, reducerStep))
-import Data.Transducer.Internal (ZipFinished (ZipFinishedNone), zipStepBoth, zipStepLeft, zipStepRight)
+import Data.Transducer (
+  Reducer (Reducer, reducerFinalize, reducerState, reducerStep),
+  ZipFinished (ZipFinishedNone),
+  zipStepBoth,
+  zipStepLeft,
+  zipStepRight,
+ )
 
 {- $setup
 >>> import Data.Transducer ((|>), intoList, reduceList, discard)
@@ -31,7 +36,7 @@ zipThese ::
   Reducer (These a1 a2) (r1, r2)
 zipThese (Reducer state1 finalize1 step1) (Reducer state2 finalize2 step2) =
   Reducer
-    { reducerInitState = (ZipFinishedNone, state1, state2)
+    { reducerState = (ZipFinishedNone, state1, state2)
     , reducerFinalize = \(_, s1, s2) -> (finalize1 s1, finalize2 s2)
     , reducerStep = \s a ->
         case a of

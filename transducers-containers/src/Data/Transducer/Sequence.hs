@@ -11,15 +11,14 @@ module Data.Transducer.Sequence (
 ) where
 
 import Data.Foldable (foldr)
-import Data.Function (id)
 import Data.Kind (Type)
 import Data.Sequence (Seq)
 import Data.Sequence qualified as Sequence
 
 import Data.Transducer (
   Reduced (Continue, Reduced),
-  Reducer (Reducer, reducerFinalize, reducerInitState, reducerStep),
-  mkLinearReducer',
+  Reducer (Reducer, reducerFinalize, reducerState, reducerStep),
+  linearReducer,
   reduceFoldr,
  )
 
@@ -52,7 +51,7 @@ fromList [42,45,48,51,54,57,60,63,66,69]
 -}
 {-# INLINE intoSeq #-}
 intoSeq :: forall (a :: Type). Reducer a (Seq a)
-intoSeq = mkLinearReducer' Sequence.empty (Sequence.|>)
+intoSeq = linearReducer Sequence.empty (Sequence.|>)
 
 {- | Flatten a sequence of @Seq a@ into a sequence of @a@.
 
@@ -67,7 +66,7 @@ fromList [1,2,3,4,5]
 concatSeq :: forall (a :: Type) (r :: Type). Reducer a r -> Reducer (Seq a) r
 concatSeq (Reducer state finalize step) =
   Reducer
-    { reducerInitState = state
+    { reducerState = state
     , reducerFinalize = finalize
     , reducerStep = \s seq -> foldr go Continue seq s
     }
