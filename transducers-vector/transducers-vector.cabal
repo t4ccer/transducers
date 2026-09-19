@@ -48,7 +48,8 @@ common lang
     -Wno-missed-specialisations -Wno-all-missed-specializations
     -Wno-unrecognised-pragmas -Wno-operator-whitespace
     -fprint-equality-relations -fprint-explicit-kinds
-    -fprint-explicit-foralls
+    -fprint-explicit-foralls -fno-show-error-context
+    -fhide-source-paths
 
 library
   import:          lang
