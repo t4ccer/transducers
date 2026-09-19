@@ -45,6 +45,7 @@ data ZipFinished
   | -- | Both reducers finished.
     ZipFinishedBoth
 
+{-# INLINE zipStepLeft #-}
 zipStepLeft ::
   (s1 -> a1 -> Reduced s1) ->
   (ZipFinished, s1, s2) ->
@@ -61,6 +62,7 @@ zipStepLeft step1 (finished, s1, s2) a1 =
       Reduced s1' -> Continue (ZipFinishedBoth, s1', s2)
     ZipFinishedBoth -> Reduced (ZipFinishedBoth, s1, s2)
 
+{-# INLINE zipStepRight #-}
 zipStepRight ::
   (s2 -> a2 -> Reduced s2) ->
   (ZipFinished, s1, s2) ->
@@ -77,6 +79,7 @@ zipStepRight step2 (finished, s1, s2) a2 =
     ZipFinished2 -> Continue (ZipFinished2, s1, s2)
     ZipFinishedBoth -> Reduced (ZipFinishedBoth, s1, s2)
 
+{-# INLINE zipStepBoth #-}
 zipStepBoth ::
   (s1 -> a1 -> Reduced s1) ->
   (s2 -> a2 -> Reduced s2) ->
