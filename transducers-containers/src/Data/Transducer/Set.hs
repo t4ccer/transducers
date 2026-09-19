@@ -10,7 +10,6 @@ module Data.Transducer.Set (
   concatSet,
 ) where
 
-import Data.Function (id)
 import Data.Kind (Type)
 import Data.Ord (Ord)
 import Data.Set (Set)
@@ -21,6 +20,7 @@ import Data.Transducer (
   Reduced (Continue, Reduced),
   Reducer (Reducer, reducerFinalize, reducerInitState, reducerStep),
   mkLinearReducer',
+  reduceFoldr,
  )
 
 -- NOTE: In doctest, never assert on output of `Set.toList [...]` as it is unstable
@@ -41,12 +41,7 @@ import Data.Transducer (
 -}
 {-# INLINE reduceSet #-}
 reduceSet :: forall (a :: Type) (r :: Type). Reducer a r -> Set a -> r
-reduceSet (Reducer state finalize step) set = finalize (Set.foldr' go id set state)
-  where
-    go a k s =
-      case step s a of
-        Reduced s' -> s'
-        Continue s' -> k s'
+reduceSet = reduceFoldr
 
 {- | Collect all elements into a @Set@.
 

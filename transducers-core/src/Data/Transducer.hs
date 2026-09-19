@@ -21,6 +21,7 @@ module Data.Transducer (
   reduceIterate,
   reduceRepeat,
   reduceReplicate,
+  reduceFoldr,
 
   -- * Reducers
   and,
@@ -91,6 +92,8 @@ import Control.Monad (Functor (fmap))
 import Data.Bool (Bool (False, True), (||))
 import Data.Either (Either (Left, Right))
 import Data.Eq (Eq ((==)))
+import Data.Foldable (Foldable)
+import Data.Foldable qualified as Foldable
 import Data.Function (const, id, ($))
 import Data.Int (Int)
 import Data.Kind (Type)
@@ -164,6 +167,7 @@ instance Applicative (Reducer a) where
       , reducerFinalize = \(_, s1, s2) -> f (finalize1 s1) (finalize2 s2)
       , reducerStep = \s a -> zipStepBoth step1 step2 s a a
       }
+
   {-# INLINE (<*>) #-}
   (<*>) :: Reducer a (x -> r) -> Reducer a x -> Reducer a r
   (<*>) = liftA2 id
@@ -193,13 +197,7 @@ instance Monoid r => Monoid (Reducer a r) where
 -}
 {-# INLINE reduceList #-}
 reduceList :: forall (a :: Type) (r :: Type). Reducer a r -> [a] -> r
-reduceList (Reducer state finalize step) input = finalize (go state input)
-  where
-    go s [] = s
-    go s (a : as) =
-      case step s a of
-        Reduced s' -> s'
-        Continue s' -> go s' as
+reduceList = reduceFoldr
 
 {- | Run a reducer on all elements of non-empty list.
 
@@ -212,7 +210,7 @@ reduceList (Reducer state finalize step) input = finalize (go state input)
 -}
 {-# INLINE reduceNonEmpty #-}
 reduceNonEmpty :: forall (a :: Type) (r :: Type). Reducer a r -> NonEmpty a -> r
-reduceNonEmpty reducer (a :| as) = reduceList reducer (a : as)
+reduceNonEmpty = reduceFoldr
 
 {- | Run a non-empty reducer on all elements of non-empty list.
 
@@ -297,6 +295,21 @@ reduceReplicate (Reducer state finalize step) n a = finalize (go state n)
         else case step s a of
           Reduced s' -> s'
           Continue s' -> go s' (n - 1)
+
+-- | Run a reducer on any 'Foldable'.
+{-# INLINE reduceFoldr #-}
+reduceFoldr ::
+  forall (a :: Type) (r :: Type) (f :: Type -> Type).
+  Foldable f =>
+  Reducer a r ->
+  f a ->
+  r
+reduceFoldr (Reducer state finalize step) f = finalize (Foldable.foldr go id f state)
+  where
+    go a k s =
+      case step s a of
+        Reduced s' -> s'
+        Continue s' -> k s'
 
 {- | Construct a reducer that consumes whole input.
 

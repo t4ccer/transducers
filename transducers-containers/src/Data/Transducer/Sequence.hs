@@ -20,6 +20,7 @@ import Data.Transducer (
   Reduced (Continue, Reduced),
   Reducer (Reducer, reducerFinalize, reducerInitState, reducerStep),
   mkLinearReducer',
+  reduceFoldr,
  )
 
 {- $setup
@@ -38,12 +39,7 @@ import Data.Transducer (
 -}
 {-# INLINE reduceSeq #-}
 reduceSeq :: forall (a :: Type) (r :: Type). Reducer a r -> Seq a -> r
-reduceSeq (Reducer state finalize step) seq = finalize (foldr go id seq state)
-  where
-    go a k s =
-      case step s a of
-        Reduced s' -> s'
-        Continue s' -> k s'
+reduceSeq = reduceFoldr
 
 {- | Collect all elements into a @Seq@.
 
