@@ -1496,6 +1496,32 @@ uninterleave (Reducer state1 finalize1 step1) (Reducer state2 finalize2 step2) =
           else fmap (True,) (zipStepRight step2 s a)
     }
 
+{- | Split off every @n@th element into the first reducer and rest to the second
+
+===== Examples
+
+>>> reduceList (takeNth 3 intoList intoList) [1..10]
+([1,5,9],[2,3,4,6,7,8,10])
+
+@since 1.0.0
+-}
+{-# INLINE takeNth #-}
+takeNth ::
+  forall (a :: Type) (r1 :: Type) (r2 :: Type).
+  Int ->
+  Reducer a r1 ->
+  Reducer a r2 ->
+  Reducer a (r1, r2)
+takeNth n (Reducer state1 finalize1 step1) (Reducer state2 finalize2 step2) =
+  Reducer
+    { reducerState = (0, (ZipFinishedNone, state1, state2))
+    , reducerFinalize = \(_, (_, s1, s2)) -> (finalize1 s1, finalize2 s2)
+    , reducerStep = \(k, s) a ->
+        if k <= 0
+          then fmap (n,) (zipStepLeft step1 s a)
+          else fmap (k - 1,) (zipStepRight step2 s a)
+    }
+
 -- ** Grouping
 
 {- | Split the sequence into groups of consecutive equal elements.
