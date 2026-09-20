@@ -1471,6 +1471,33 @@ splitAt n (Reducer state1 finalize1 step1) (Reducer state2 finalize2 step2) =
           else fmap (n,) (zipStepRight step2 s a)
     }
 
+{- | Split sequence into two alternating sequences.
+
+===== Examples
+
+>>> reduceList (uninterleave intoList intoList) [1..5]
+([1,3,5],[2,4])
+
+@since 1.0.0
+-}
+{-# INLINE uninterleave #-}
+uninterleave ::
+  forall (a :: Type) (r1 :: Type) (r2 :: Type).
+  Reducer a r1 ->
+  Reducer a r2 ->
+  Reducer a (r1, r2)
+uninterleave (Reducer state1 finalize1 step1) (Reducer state2 finalize2 step2) =
+  Reducer
+    { reducerState = (True, (ZipFinishedNone, state1, state2))
+    , reducerFinalize = \(_, (_, s1, s2)) -> (finalize1 s1, finalize2 s2)
+    , reducerStep = \(first, s) a ->
+        if first
+          then fmap (False,) (zipStepLeft step1 s a)
+          else fmap (True,) (zipStepRight step2 s a)
+    }
+
+-- ** Grouping
+
 {- | Split the sequence into groups of consecutive equal elements.
 
 ===== Examples
