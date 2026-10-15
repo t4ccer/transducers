@@ -31,7 +31,7 @@ import Data.Maybe (Maybe (Just, Nothing))
 import Data.Monoid (Monoid (mempty))
 import Data.Ord (Ord (compare, max, min, (<=), (>)), Ordering (EQ, GT, LT))
 import Data.Semigroup (Semigroup, (<>))
-import Prelude (Num ((*), (+), (-)), seq)
+import Prelude (Fractional (fromRational, (/)), Num ((*), (+), (-)), fromIntegral, seq)
 
 -- for haddock
 import Prelude qualified as Preldue ()
@@ -451,6 +451,91 @@ compareLength n =
           LT -> Continue (LT, s + 1)
           EQ -> Continue (EQ, s + 1)
           GT -> Reduced (GT, s + 1)
+    }
+
+{- | Get the mean (average) of the elements.
+
+===== Examples
+
+>>> reduceList mean [1..5]
+Just 3.0
+
+>>> reduceList mean []
+Nothing
+
+@since 1.0.0
+-}
+{-# INLINE mean #-}
+mean :: forall (a :: Type). Fractional a => Reducer a (Maybe a)
+mean =
+  Reducer
+    { reducerState = (0 :: Int, 0 :: a)
+    , reducerFinalize = \(len, sum) -> if len == 0 then Nothing else Just (sum / fromRational (fromIntegral len))
+    , reducerStep = \(!len, !sum) a -> Continue (len + 1, sum + a)
+    }
+
+{- | Get the mean (average) of non-empty sequence of elements.
+
+===== Examples
+
+>>> reduceNonEmpty1 mean1 (1:|[2..5])
+3.0
+
+@since 1.0.0
+-}
+{-# INLINE mean1 #-}
+mean1 :: forall (a :: Type). Fractional a => a -> Reducer a a
+mean1 a =
+  Reducer
+    { reducerState = (1 :: Int, a)
+    , reducerFinalize = \(len, sum) -> sum / fromRational (fromIntegral len)
+    , reducerStep = \(!len, !sum) a -> Continue (len + 1, sum + a)
+    }
+
+{- | Get the variance (population) of the elements.
+
+===== Examples
+
+>>> reduceList variance [1,5,3,9,2]
+Just 8.0
+
+>>> reduceList variance []
+Nothing
+
+@since 1.0.0
+-}
+{-# INLINE variance #-}
+variance :: forall (a :: Type). Fractional a => Reducer a (Maybe a)
+variance =
+  Reducer
+    { reducerState = (0, 0, 0 :: Int)
+    , reducerFinalize = \(total, totalSq, len) ->
+        if len == 0
+          then Nothing
+          else
+            let m = total / fromRational (fromIntegral len)
+             in Just ((totalSq / fromRational (fromIntegral len)) - (m * m))
+    , reducerStep = \(!total, !totalSq, !n) a -> Continue (total + a, totalSq + (a * a), n + 1)
+    }
+
+{- | Get the variance (population) of non-empty sequence of elements.
+
+===== Examples
+
+>>> reduceNonEmpty1 variance1 (1 :| [5,3,9,2])
+8.0
+
+@since 1.0.0
+-}
+{-# INLINE variance1 #-}
+variance1 :: forall (a :: Type). Fractional a => a -> Reducer a a
+variance1 a =
+  Reducer
+    { reducerState = (a, a * a, 1 :: Int)
+    , reducerFinalize = \(total, totalSq, len) ->
+        let m = total / fromRational (fromIntegral len)
+         in (totalSq / fromRational (fromIntegral len)) - (m * m)
+    , reducerStep = \(!total, !totalSq, !n) a -> Continue (total + a, totalSq + (a * a), n + 1)
     }
 
 {- | Get the disjunction of 'Bool's.
@@ -1849,6 +1934,5 @@ zipStepBoth step1 step2 (finished, s1, s2) a1 a2 =
 -- ** Doctest Imports (ignore)
 
 {- $setup
->>> import Data.String (String)
->>> import GHC.Real (even, mod, odd)
+>>> import Prelude (String, even, mod, odd)
 -}
