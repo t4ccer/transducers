@@ -54,9 +54,9 @@ type role Reducer representational representational
 
 type Reducer :: Type -> Type -> Type
 data Reducer a r = forall s. Reducer
-  { reducerState :: s
-  , reducerFinalize :: s -> r
-  , reducerStep :: s -> a -> Reduced s
+  { state :: s
+  , finalize :: s -> r
+  , step :: s -> a -> Reduced s
   }
 
 {- | Change the final accumulator value.
@@ -94,18 +94,18 @@ instance Applicative (Reducer a) where
   pure :: forall (r :: Type). r -> Reducer a r
   pure r =
     Reducer
-      { reducerState = ()
-      , reducerFinalize = const r
-      , reducerStep = \_ _ -> Reduced ()
+      { state = ()
+      , finalize = const r
+      , step = \_ _ -> Reduced ()
       }
 
   {-# INLINE liftA2 #-}
   liftA2 :: (x -> y -> r) -> Reducer a x -> Reducer a y -> Reducer a r
   liftA2 f (Reducer state1 finalize1 step1) (Reducer state2 finalize2 step2) =
     Reducer
-      { reducerState = (ZipFinishedNone, state1, state2)
-      , reducerFinalize = \(_, s1, s2) -> f (finalize1 s1) (finalize2 s2)
-      , reducerStep = \s a -> zipStepBoth step1 step2 s a a
+      { state = (ZipFinishedNone, state1, state2)
+      , finalize = \(_, s1, s2) -> f (finalize1 s1) (finalize2 s2)
+      , step = \s a -> zipStepBoth step1 step2 s a a
       }
 
   {-# INLINE (<*>) #-}
@@ -444,9 +444,9 @@ GT
 compareLength :: forall (a :: Type). Int -> Reducer a Ordering
 compareLength n =
   Reducer
-    { reducerState = (compare 0 n, 0)
-    , reducerFinalize = \(r, _) -> r
-    , reducerStep = \(_, s) _ ->
+    { state = (compare 0 n, 0)
+    , finalize = \(r, _) -> r
+    , step = \(_, s) _ ->
         case compare (s + 1) n of
           LT -> Continue (LT, s + 1)
           EQ -> Continue (EQ, s + 1)
@@ -469,9 +469,9 @@ Nothing
 mean :: forall (a :: Type). Fractional a => Reducer a (Maybe a)
 mean =
   Reducer
-    { reducerState = (0 :: Int, 0 :: a)
-    , reducerFinalize = \(len, sum) -> if len == 0 then Nothing else Just (sum / fromRational (fromIntegral len))
-    , reducerStep = \(!len, !sum) a -> Continue (len + 1, sum + a)
+    { state = (0 :: Int, 0 :: a)
+    , finalize = \(len, sum) -> if len == 0 then Nothing else Just (sum / fromRational (fromIntegral len))
+    , step = \(!len, !sum) a -> Continue (len + 1, sum + a)
     }
 
 {- | Get the mean (average) of non-empty sequence of elements.
@@ -487,9 +487,9 @@ mean =
 mean1 :: forall (a :: Type). Fractional a => a -> Reducer a a
 mean1 a =
   Reducer
-    { reducerState = (1 :: Int, a)
-    , reducerFinalize = \(len, sum) -> sum / fromRational (fromIntegral len)
-    , reducerStep = \(!len, !sum) a -> Continue (len + 1, sum + a)
+    { state = (1 :: Int, a)
+    , finalize = \(len, sum) -> sum / fromRational (fromIntegral len)
+    , step = \(!len, !sum) a -> Continue (len + 1, sum + a)
     }
 
 {- | Get the variance (population) of the elements.
@@ -508,14 +508,14 @@ Nothing
 variance :: forall (a :: Type). Fractional a => Reducer a (Maybe a)
 variance =
   Reducer
-    { reducerState = (0, 0, 0 :: Int)
-    , reducerFinalize = \(total, totalSq, len) ->
+    { state = (0, 0, 0 :: Int)
+    , finalize = \(total, totalSq, len) ->
         if len == 0
           then Nothing
           else
             let m = total / fromRational (fromIntegral len)
              in Just ((totalSq / fromRational (fromIntegral len)) - (m * m))
-    , reducerStep = \(!total, !totalSq, !n) a -> Continue (total + a, totalSq + (a * a), n + 1)
+    , step = \(!total, !totalSq, !n) a -> Continue (total + a, totalSq + (a * a), n + 1)
     }
 
 {- | Get the variance (population) of non-empty sequence of elements.
@@ -531,11 +531,11 @@ variance =
 variance1 :: forall (a :: Type). Fractional a => a -> Reducer a a
 variance1 a =
   Reducer
-    { reducerState = (a, a * a, 1 :: Int)
-    , reducerFinalize = \(total, totalSq, len) ->
+    { state = (a, a * a, 1 :: Int)
+    , finalize = \(total, totalSq, len) ->
         let m = total / fromRational (fromIntegral len)
          in (totalSq / fromRational (fromIntegral len)) - (m * m)
-    , reducerStep = \(!total, !totalSq, !n) a -> Continue (total + a, totalSq + (a * a), n + 1)
+    , step = \(!total, !totalSq, !n) a -> Continue (total + a, totalSq + (a * a), n + 1)
     }
 
 {- | Get the disjunction of 'Bool's.
@@ -601,9 +601,9 @@ False
 all :: forall (a :: Type). (a -> Bool) -> Reducer a Bool
 all pred =
   Reducer
-    { reducerState = True
-    , reducerFinalize = id
-    , reducerStep = \_ a ->
+    { state = True
+    , finalize = id
+    , step = \_ a ->
         if pred a
           then Continue True
           else Reduced False
@@ -630,9 +630,9 @@ True
 any :: forall (a :: Type). (a -> Bool) -> Reducer a Bool
 any pred =
   Reducer
-    { reducerState = False
-    , reducerFinalize = id
-    , reducerStep = \_ a ->
+    { state = False
+    , finalize = id
+    , step = \_ a ->
         if pred a
           then Reduced True
           else Continue False
@@ -654,9 +654,9 @@ False
 null :: forall (a :: Type). Reducer a Bool
 null =
   Reducer
-    { reducerState = True
-    , reducerFinalize = id
-    , reducerStep = \_ _ -> Reduced False
+    { state = True
+    , finalize = id
+    , step = \_ _ -> Reduced False
     }
 
 {- | Extract the first element if exists.
@@ -678,9 +678,9 @@ Nothing
 head :: forall (a :: Type). Reducer a (Maybe a)
 head =
   Reducer
-    { reducerState = Nothing
-    , reducerFinalize = id
-    , reducerStep = \_ a -> Reduced (Just a)
+    { state = Nothing
+    , finalize = id
+    , step = \_ a -> Reduced (Just a)
     }
 
 {- | Extract the first element from non-empty sequence.
@@ -741,9 +741,9 @@ Nothing
 find :: forall (a :: Type). (a -> Bool) -> Reducer a (Maybe a)
 find pred =
   Reducer
-    { reducerState = Nothing
-    , reducerFinalize = id
-    , reducerStep = \_ a ->
+    { state = Nothing
+    , finalize = id
+    , step = \_ a ->
         if pred a
           then Reduced (Just a)
           else Continue Nothing
@@ -781,9 +781,9 @@ False
 elemBy :: forall (a :: Type). (a -> Bool) -> Reducer a Bool
 elemBy pred =
   Reducer
-    { reducerState = False
-    , reducerFinalize = id
-    , reducerStep = \_ a ->
+    { state = False
+    , finalize = id
+    , step = \_ a ->
         if pred a
           then Reduced True
           else Continue False
@@ -852,9 +852,9 @@ mconcat = linearReducer mempty (<>)
 intoList :: forall (a :: Type). Reducer a [a]
 intoList =
   Reducer
-    { reducerState = []
-    , reducerFinalize = List.reverse
-    , reducerStep = \as a -> Continue (a : as)
+    { state = []
+    , finalize = List.reverse
+    , step = \as a -> Continue (a : as)
     }
 
 {- | Collect all elements into a non-empty list or @Nothing@ if it does not contain any elements.
@@ -873,9 +873,9 @@ Nothing
 intoNonEmpty :: forall (a :: Type). Reducer a (Maybe (NonEmpty a))
 intoNonEmpty =
   Reducer
-    { reducerState = Nothing
-    , reducerFinalize = fmap NonEmpty.reverse
-    , reducerStep = \as a ->
+    { state = Nothing
+    , finalize = fmap NonEmpty.reverse
+    , step = \as a ->
         case as of
           Nothing -> Continue (Just (a :| []))
           Just (b :| bs) -> Continue (Just (a :| b : bs))
@@ -894,9 +894,9 @@ intoNonEmpty =
 intoNonEmpty1 :: forall (a :: Type). a -> Reducer a (NonEmpty a)
 intoNonEmpty1 a =
   Reducer
-    { reducerState = []
-    , reducerFinalize = \acc -> a :| List.reverse acc
-    , reducerStep = \as a -> Continue (a : as)
+    { state = []
+    , finalize = \acc -> a :| List.reverse acc
+    , step = \as a -> Continue (a : as)
     }
 
 {- | Discard the rest of the elements. It works on infinite sequences.
@@ -915,9 +915,9 @@ and you care only about some of them.
 discard :: forall (a :: Type). Reducer a ()
 discard =
   Reducer
-    { reducerState = ()
-    , reducerFinalize = const ()
-    , reducerStep = \_ _ -> Reduced ()
+    { state = ()
+    , finalize = const ()
+    , step = \_ _ -> Reduced ()
     }
 
 -- * Transducers
@@ -973,9 +973,9 @@ map ::
   Reducer b r
 map f (Reducer state finalize step) =
   Reducer
-    { reducerState = state
-    , reducerFinalize = finalize
-    , reducerStep = \s b -> step s (f b)
+    { state = state
+    , finalize = finalize
+    , step = \s b -> step s (f b)
     }
 
 {- | Take first @n@ elements from the beginning of the sequence.
@@ -995,9 +995,9 @@ take ::
   Reducer a r
 take n (Reducer state finalize step) =
   Reducer
-    { reducerState = (n, state)
-    , reducerFinalize = \(_, state) -> finalize state
-    , reducerStep = \(currN, s) a ->
+    { state = (n, state)
+    , finalize = \(_, state) -> finalize state
+    , step = \(currN, s) a ->
         if currN <= 0
           then Reduced (currN, s)
           else
@@ -1029,9 +1029,9 @@ takeWhile ::
   Reducer a r
 takeWhile pred (Reducer state finalize step) =
   Reducer
-    { reducerState = state
-    , reducerFinalize = finalize
-    , reducerStep = \s a ->
+    { state = state
+    , finalize = finalize
+    , step = \s a ->
         if pred a
           then step s a
           else Reduced s
@@ -1054,9 +1054,9 @@ drop ::
   Reducer a r
 drop n (Reducer state finalize step) =
   Reducer
-    { reducerState = (n, state)
-    , reducerFinalize = \(_, state) -> finalize state
-    , reducerStep = \(currN, s) a ->
+    { state = (n, state)
+    , finalize = \(_, state) -> finalize state
+    , step = \(currN, s) a ->
         if currN <= 0
           then fmap (currN,) (step s a)
           else Continue (currN - 1, s)
@@ -1081,9 +1081,9 @@ dropWhile ::
   Reducer a r
 dropWhile pred (Reducer state finalize step) =
   Reducer
-    { reducerState = (False, state)
-    , reducerFinalize = \(_, state) -> finalize state
-    , reducerStep = \(finishedDropping, s) a ->
+    { state = (False, state)
+    , finalize = \(_, state) -> finalize state
+    , step = \(finishedDropping, s) a ->
         if finishedDropping
           then fmap (True,) (step s a)
           else
@@ -1109,9 +1109,9 @@ filter ::
   Reducer a r
 filter pred (Reducer state finalize step) =
   Reducer
-    { reducerState = state
-    , reducerFinalize = finalize
-    , reducerStep = \s a ->
+    { state = state
+    , finalize = finalize
+    , step = \s a ->
         if pred a
           then step s a
           else Continue s
@@ -1135,9 +1135,9 @@ mapMaybe ::
   Reducer b r
 mapMaybe f (Reducer state finalize step) =
   Reducer
-    { reducerState = state
-    , reducerFinalize = finalize
-    , reducerStep = \s a ->
+    { state = state
+    , finalize = finalize
+    , step = \s a ->
         case f a of
           Nothing -> Continue s
           Just a' -> step s a'
@@ -1159,9 +1159,9 @@ catMaybes ::
   Reducer (Maybe a) r
 catMaybes (Reducer state finalize step) =
   Reducer
-    { reducerState = state
-    , reducerFinalize = finalize
-    , reducerStep = \s -> \case
+    { state = state
+    , finalize = finalize
+    , step = \s -> \case
         Nothing -> Continue s
         Just a -> step s a
     }
@@ -1183,9 +1183,9 @@ intersperse ::
   Reducer a r
 intersperse middle (Reducer state finalize step) =
   Reducer
-    { reducerState = (False, state)
-    , reducerFinalize = \(_, state) -> finalize state
-    , reducerStep = \(acc, s) a ->
+    { state = (False, state)
+    , finalize = \(_, state) -> finalize state
+    , step = \(acc, s) a ->
         if acc
           then case step s middle of
             Reduced s2 -> Reduced (True, s2)
@@ -1209,9 +1209,9 @@ concatList ::
   Reducer [a] r
 concatList (Reducer state finalize step) =
   Reducer
-    { reducerState = state
-    , reducerFinalize = finalize
-    , reducerStep = step'
+    { state = state
+    , finalize = finalize
+    , step = step'
     }
   where
     step' s = \case
@@ -1277,9 +1277,9 @@ nubBy ::
   Reducer a r
 nubBy eq (Reducer state finalize step) =
   Reducer
-    { reducerState = ([], state)
-    , reducerFinalize = \(_, state) -> finalize state
-    , reducerStep = \(seen, s) a ->
+    { state = ([], state)
+    , finalize = \(_, state) -> finalize state
+    , step = \(seen, s) a ->
         if list_elemBy a seen
           then Continue (seen, s)
           else fmap (a : seen,) (step s a)
@@ -1306,11 +1306,11 @@ uncons ::
   Reducer a (Maybe (a, r))
 uncons (Reducer state finalize step) =
   Reducer
-    { reducerState = (Nothing, state)
-    , reducerFinalize = \(r, s) -> case r of
+    { state = (Nothing, state)
+    , finalize = \(r, s) -> case r of
         Nothing -> Nothing
         Just fst -> Just (fst, finalize s)
-    , reducerStep = \(mr, s) a -> case mr of
+    , step = \(mr, s) a -> case mr of
         Nothing -> Continue (Just a, s)
         Just fst -> fmap (Just fst,) (step s a)
     }
@@ -1332,11 +1332,11 @@ unsnoc ::
   Reducer a (Maybe (r, a))
 unsnoc (Reducer state finalize step) =
   Reducer
-    { reducerState = (Nothing, state)
-    , reducerFinalize = \(r, s) -> case r of
+    { state = (Nothing, state)
+    , finalize = \(r, s) -> case r of
         Nothing -> Nothing
         Just lst -> Just (finalize s, lst)
-    , reducerStep = \(mr, s) a -> case mr of
+    , step = \(mr, s) a -> case mr of
         Nothing -> Continue (Just a, s)
         Just lst -> fmap (Just a,) (step s lst)
     }
@@ -1361,9 +1361,9 @@ scan ::
   Reducer a r
 scan scanStep scanInit (Reducer state finalize step) =
   Reducer
-    { reducerState = (scanInit, state)
-    , reducerFinalize = \(_, state) -> finalize state
-    , reducerStep = \(scanAcc, s) a ->
+    { state = (scanInit, state)
+    , finalize = \(_, state) -> finalize state
+    , step = \(scanAcc, s) a ->
         case step s (scanAcc, a) of
           Reduced s' -> Reduced (scanAcc, s')
           Continue s' -> Continue (scanAcc `seq` scanStep scanAcc a, s')
@@ -1421,9 +1421,9 @@ zipTuple ::
   Reducer (a1, a2) (r1, r2)
 zipTuple (Reducer state1 finalize1 step1) (Reducer state2 finalize2 step2) =
   Reducer
-    { reducerState = (ZipFinishedNone, state1, state2)
-    , reducerFinalize = \(_, s1, s2) -> (finalize1 s1, finalize2 s2)
-    , reducerStep = \s (a1, a2) -> zipStepBoth step1 step2 s a1 a2
+    { state = (ZipFinishedNone, state1, state2)
+    , finalize = \(_, s1, s2) -> (finalize1 s1, finalize2 s2)
+    , step = \s (a1, a2) -> zipStepBoth step1 step2 s a1 a2
     }
 
 {- | Run first reducer on @Left@ elements and second reducer on @Right@s.
@@ -1445,9 +1445,9 @@ zipEither ::
   Reducer (Either a1 a2) (r1, r2)
 zipEither (Reducer state1 finalize1 step1) (Reducer state2 finalize2 step2) =
   Reducer
-    { reducerState = (ZipFinishedNone, state1, state2)
-    , reducerFinalize = \(_, s1, s2) -> (finalize1 s1, finalize2 s2)
-    , reducerStep = \s a ->
+    { state = (ZipFinishedNone, state1, state2)
+    , finalize = \(_, s1, s2) -> (finalize1 s1, finalize2 s2)
+    , step = \s a ->
         case a of
           Left a1 -> zipStepLeft step1 s a1
           Right a2 -> zipStepRight step2 s a2
@@ -1471,9 +1471,9 @@ partition ::
   Reducer a (r1, r2)
 partition f (Reducer state1 finalize1 step1) (Reducer state2 finalize2 step2) =
   Reducer
-    { reducerState = (ZipFinishedNone, state1, state2)
-    , reducerFinalize = \(_, s1, s2) -> (finalize1 s1, finalize2 s2)
-    , reducerStep = \s a -> if f a then zipStepLeft step1 s a else zipStepRight step2 s a
+    { state = (ZipFinishedNone, state1, state2)
+    , finalize = \(_, s1, s2) -> (finalize1 s1, finalize2 s2)
+    , step = \s a -> if f a then zipStepLeft step1 s a else zipStepRight step2 s a
     }
 
 {- | Run first reducer on the longest prefix that satisfies the predicate, then second.
@@ -1494,9 +1494,9 @@ span ::
   Reducer a (r1, r2)
 span f (Reducer state1 finalize1 step1) (Reducer state2 finalize2 step2) =
   Reducer
-    { reducerState = (True, (ZipFinishedNone, state1, state2))
-    , reducerFinalize = \(_, (_, s1, s2)) -> (finalize1 s1, finalize2 s2)
-    , reducerStep = \(onFirst, s) a ->
+    { state = (True, (ZipFinishedNone, state1, state2))
+    , finalize = \(_, (_, s1, s2)) -> (finalize1 s1, finalize2 s2)
+    , step = \(onFirst, s) a ->
         if onFirst && f a
           then fmap (True,) (zipStepLeft step1 s a)
           else fmap (False,) (zipStepRight step2 s a)
@@ -1522,9 +1522,9 @@ break ::
   Reducer a (r1, r2)
 break f (Reducer state1 finalize1 step1) (Reducer state2 finalize2 step2) =
   Reducer
-    { reducerState = (True, (ZipFinishedNone, state1, state2))
-    , reducerFinalize = \(_, (_, s1, s2)) -> (finalize1 s1, finalize2 s2)
-    , reducerStep = \(onFirst, s) a ->
+    { state = (True, (ZipFinishedNone, state1, state2))
+    , finalize = \(_, (_, s1, s2)) -> (finalize1 s1, finalize2 s2)
+    , step = \(onFirst, s) a ->
         if onFirst && not (f a)
           then fmap (True,) (zipStepLeft step1 s a)
           else fmap (False,) (zipStepRight step2 s a)
@@ -1548,9 +1548,9 @@ splitAt ::
   Reducer a (r1, r2)
 splitAt n (Reducer state1 finalize1 step1) (Reducer state2 finalize2 step2) =
   Reducer
-    { reducerState = (n, (ZipFinishedNone, state1, state2))
-    , reducerFinalize = \(_, (_, s1, s2)) -> (finalize1 s1, finalize2 s2)
-    , reducerStep = \(n, s) a ->
+    { state = (n, (ZipFinishedNone, state1, state2))
+    , finalize = \(_, (_, s1, s2)) -> (finalize1 s1, finalize2 s2)
+    , step = \(n, s) a ->
         if n > 0
           then fmap (n - 1,) (zipStepLeft step1 s a)
           else fmap (n,) (zipStepRight step2 s a)
@@ -1573,9 +1573,9 @@ uninterleave ::
   Reducer a (r1, r2)
 uninterleave (Reducer state1 finalize1 step1) (Reducer state2 finalize2 step2) =
   Reducer
-    { reducerState = (True, (ZipFinishedNone, state1, state2))
-    , reducerFinalize = \(_, (_, s1, s2)) -> (finalize1 s1, finalize2 s2)
-    , reducerStep = \(first, s) a ->
+    { state = (True, (ZipFinishedNone, state1, state2))
+    , finalize = \(_, (_, s1, s2)) -> (finalize1 s1, finalize2 s2)
+    , step = \(first, s) a ->
         if first
           then fmap (False,) (zipStepLeft step1 s a)
           else fmap (True,) (zipStepRight step2 s a)
@@ -1599,9 +1599,9 @@ takeNth ::
   Reducer a (r1, r2)
 takeNth n (Reducer state1 finalize1 step1) (Reducer state2 finalize2 step2) =
   Reducer
-    { reducerState = (0, (ZipFinishedNone, state1, state2))
-    , reducerFinalize = \(_, (_, s1, s2)) -> (finalize1 s1, finalize2 s2)
-    , reducerStep = \(k, s) a ->
+    { state = (0, (ZipFinishedNone, state1, state2))
+    , finalize = \(_, (_, s1, s2)) -> (finalize1 s1, finalize2 s2)
+    , step = \(k, s) a ->
         if k <= 0
           then fmap (n,) (zipStepLeft step1 s a)
           else fmap (k - 1,) (zipStepRight step2 s a)
@@ -1794,12 +1794,12 @@ groupByKeyWith ::
   Reducer a r
 groupByKeyWith key sameGroup groupSeed groupFinalize groupStep (Reducer state finalize step) =
   Reducer
-    { reducerState = (Nothing, state)
-    , reducerFinalize = \(current, s) ->
+    { state = (Nothing, state)
+    , finalize = \(current, s) ->
         case current of
           Nothing -> finalize s
           Just (_, g) -> finalize (unReduced (step s (groupFinalize (unReduced g))))
-    , reducerStep = \(current, s) a ->
+    , step = \(current, s) a ->
         case current of
           Nothing -> Continue (Just (key a, groupSeed a), s)
           Just (k, g) ->
@@ -1845,9 +1845,9 @@ feed1 a (Reducer state finalize step) =
 linearReducer :: forall (a :: Type) (r :: Type). r -> (r -> a -> r) -> Reducer a r
 linearReducer acc f =
   Reducer
-    { reducerState = acc
-    , reducerFinalize = id
-    , reducerStep = \r !a -> let !r' = f r a in Continue r'
+    { state = acc
+    , finalize = id
+    , step = \r !a -> let !r' = f r a in Continue r'
     }
 
 -- ** Zipping

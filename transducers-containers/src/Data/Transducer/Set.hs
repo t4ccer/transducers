@@ -18,7 +18,7 @@ import Prelude (flip)
 
 import Data.Transducer (
   Reduced (Continue, Reduced),
-  Reducer (Reducer, reducerFinalize, reducerState, reducerStep),
+  Reducer (Reducer, finalize, state, step),
   linearReducer,
   reduceFoldr,
  )
@@ -69,9 +69,9 @@ intoSet = linearReducer Set.empty (flip Set.insert) -- TODO: Optimize
 concatSet :: forall (a :: Type) (r :: Type). Reducer a r -> Reducer (Set a) r
 concatSet (Reducer state finalize step) =
   Reducer
-    { reducerState = state
-    , reducerFinalize = finalize
-    , reducerStep = \s set -> Set.foldr' go Continue set s
+    { state = state
+    , finalize = finalize
+    , step = \s set -> Set.foldr' go Continue set s
     }
   where
     go a k s = case step s a of

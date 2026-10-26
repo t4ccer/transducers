@@ -8,7 +8,7 @@ import Data.Kind (Type)
 import Data.These (These (That, These, This))
 
 import Data.Transducer (
-  Reducer (Reducer, reducerFinalize, reducerState, reducerStep),
+  Reducer (Reducer, finalize, state, step),
   ZipFinished (ZipFinishedNone),
   zipStepBoth,
   zipStepLeft,
@@ -36,9 +36,9 @@ zipThese ::
   Reducer (These a1 a2) (r1, r2)
 zipThese (Reducer state1 finalize1 step1) (Reducer state2 finalize2 step2) =
   Reducer
-    { reducerState = (ZipFinishedNone, state1, state2)
-    , reducerFinalize = \(_, s1, s2) -> (finalize1 s1, finalize2 s2)
-    , reducerStep = \s a ->
+    { state = (ZipFinishedNone, state1, state2)
+    , finalize = \(_, s1, s2) -> (finalize1 s1, finalize2 s2)
+    , step = \s a ->
         case a of
           This a1 -> zipStepLeft step1 s a1
           That a2 -> zipStepRight step2 s a2

@@ -17,7 +17,7 @@ import Data.Sequence qualified as Sequence
 
 import Data.Transducer (
   Reduced (Continue, Reduced),
-  Reducer (Reducer, reducerFinalize, reducerState, reducerStep),
+  Reducer (Reducer, finalize, state, step),
   linearReducer,
   reduceFoldr,
  )
@@ -66,9 +66,9 @@ fromList [1,2,3,4,5]
 concatSeq :: forall (a :: Type) (r :: Type). Reducer a r -> Reducer (Seq a) r
 concatSeq (Reducer state finalize step) =
   Reducer
-    { reducerState = state
-    , reducerFinalize = finalize
-    , reducerStep = \s seq -> foldr go Continue seq s
+    { state = state
+    , finalize = finalize
+    , step = \s seq -> foldr go Continue seq s
     }
   where
     go a k s = case step s a of

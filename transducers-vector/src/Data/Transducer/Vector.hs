@@ -29,7 +29,7 @@ import GHC.Num (Num ((+)))
 
 import Data.Transducer (
   Reduced (Continue, Reduced),
-  Reducer (Reducer, reducerFinalize, reducerState, reducerStep),
+  Reducer (Reducer, finalize, state, step),
  )
 
 {- $setup
@@ -121,9 +121,9 @@ intoGenericVector ::
   forall (a :: Type) (v :: Type -> Type). Generic.Vector v a => Reducer a (v a)
 intoGenericVector =
   Reducer
-    { reducerState = (0, [])
-    , reducerFinalize = \(n, as) -> Generic.unstreamR (Bundle.fromListN n as)
-    , reducerStep = \(!n, as) a -> Continue (n + 1, a : as)
+    { state = (0, [])
+    , finalize = \(n, as) -> Generic.unstreamR (Bundle.fromListN n as)
+    , step = \(!n, as) a -> Continue (n + 1, a : as)
     }
 
 {- | Collect all elements into a @Stream@.
@@ -140,9 +140,9 @@ intoVectorStream ::
   forall (m :: Type -> Type) (a :: Type). Monad m => Reducer a (Stream m a)
 intoVectorStream =
   Reducer
-    { reducerState = []
-    , reducerFinalize = \as -> Stream.fromList (reverse as)
-    , reducerStep = \as a -> Continue (a : as)
+    { state = []
+    , finalize = \as -> Stream.fromList (reverse as)
+    , step = \as a -> Continue (a : as)
     }
 
 {- | Flatten a sequence of @Vector a@ into a sequence of @a@.
@@ -171,9 +171,9 @@ concatGenericVector ::
   Reducer (v a) r
 concatGenericVector (Reducer state finalize step) =
   Reducer
-    { reducerState = state
-    , reducerFinalize = finalize
-    , reducerStep = step' 0
+    { state = state
+    , finalize = finalize
+    , step = step' 0
     }
   where
     step' i s v =
