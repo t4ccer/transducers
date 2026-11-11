@@ -61,7 +61,8 @@ data Reducer a r = forall s. Reducer
 
 {- | Change the final accumulator value.
 
-Note that 'fmap' is different than 'map':
+Note that 'fmap' is different than 'map';
+'fmap' maps the result of the reduction while 'map' maps the input elements
 
 @
 'fmap' :: (r -> x) -> t'Reducer' a r -> t'Reducer' a x
@@ -76,6 +77,8 @@ instance Functor (Reducer a) where
 
 {- | 'liftA2' runs two reducers in parallel, together with @ApplicativeDo@ it allows to
 ergonomically define new reducers that run multiple operations with a single input traversal:
+
+===== __Examples__
 
 @
 {\-# LANGUAGE ApplicativeDo #-\}
@@ -120,7 +123,14 @@ instance Applicative (Reducer a) where
   (<*) :: Reducer a r -> Reducer a x -> Reducer a r
   (<*) = liftA2 const
 
-{- | @('<>') = 'liftA2' ('<>')@
+{- | '<>' will run both reducers on the same input and then apply '<>' to the resulting values
+
+@('<>') = 'liftA2' ('<>')@
+
+===== __Examples__
+
+>>> reduceList (intoList <> (take 3 |> intoList)) [1..5]
+[1,2,3,4,5,1,2,3]
 
 @since 1.0.0
 -}
@@ -128,6 +138,11 @@ instance Semigroup r => Semigroup (Reducer a r) where
   (<>) = liftA2 (<>)
 
 {- | @'mempty' = 'pure' 'mempty'@
+
+===== __Examples__
+
+>>> reduceList (pure 42) [1..5]
+42
 
 @since 1.0.0
 -}
@@ -156,7 +171,7 @@ instance Functor Reduced where
 
 {- | Extract the result of the reduction.
 
-===== Examples
+===== __Examples__
 
 >>> unReduced (Reduced 42)
 42
@@ -167,7 +182,7 @@ instance Functor Reduced where
 @since 1.0.0
 -}
 {-# INLINE unReduced #-}
-unReduced :: Reduced a -> a
+unReduced :: forall (a :: Type). Reduced a -> a
 unReduced = \case
   Reduced a -> a
   Continue a -> a
@@ -181,7 +196,7 @@ All of @reduce*@ functions take a t'Reducer' and a source.
 
 {- | Run a reducer on all list elements.
 
-===== Examples
+===== __Examples__
 
 >>> reduceList sum [1,2,3]
 6
@@ -194,7 +209,7 @@ reduceList = reduceFoldr
 
 {- | Run a reducer on all elements of non-empty list.
 
-===== Examples
+===== __Examples__
 
 >>> reduceNonEmpty sum (1 :| [2,3])
 6
@@ -207,7 +222,7 @@ reduceNonEmpty = reduceFoldr
 
 {- | Run a non-empty reducer on all elements of non-empty list.
 
-===== Examples
+===== __Examples__
 
 >>> reduceNonEmpty1 maximum1 (2 :| [1,4,3])
 4
@@ -220,7 +235,7 @@ reduceNonEmpty1 mkReducer (a :| as) = reduceList (mkReducer a) as
 
 {- | Run a reducer on a single element.
 
-===== Examples
+===== __Examples__
 
 >>> reduceSingleton head 1
 Just 1
@@ -236,7 +251,7 @@ reduceSingleton reducer a = reduceList reducer [a]
 
 {- | Run a reducer on an infinite sequence of repeated function applications.
 
-===== Examples
+===== __Examples__
 
 >>> reduceIterate (take 10 |> intoList) (+3) 42
 [42,45,48,51,54,57,60,63,66,69]
@@ -253,7 +268,7 @@ reduceIterate (Reducer state finalize step) f a = finalize (go state a)
 
 {- | Run a reducer on an infinite sequence of the same value.
 
-===== Examples
+===== __Examples__
 
 >>> reduceRepeat (take 10 |> intoList) 42
 [42,42,42,42,42,42,42,42,42,42]
@@ -270,7 +285,7 @@ reduceRepeat (Reducer state finalize step) a = finalize (go state)
 
 {- | Run a reducer on a finite sequence of the same value.
 
-===== Examples
+===== __Examples__
 
 >>> reduceReplicate intoList 10 42
 [42,42,42,42,42,42,42,42,42,42]
@@ -289,6 +304,8 @@ reduceReplicate (Reducer state finalize step) n a = finalize (go state n)
           Continue s' -> go s' (n - 1)
 
 {- | Run a reducer on any 'Foldable' by feeding elements with 'Foldable.foldr'.
+
+===== __Examples__
 
 >>> import Data.Complex (Complex ((:+)))
 >>> reduceFoldr head (1 :+ 2)
@@ -314,7 +331,7 @@ reduceFoldr (Reducer state finalize step) f = finalize (Foldable.foldr go id f s
 
 {- | Get the sum of the elements in the sequence.
 
-===== Examples
+===== __Examples__
 
 >>> reduceList sum [1..10]
 55
@@ -330,7 +347,7 @@ sum = linearReducer 0 (+)
 
 {- | Get the product of the elements in the sequence.
 
-===== Examples
+===== __Examples__
 
 >>> reduceList product [1..5]
 120
@@ -346,7 +363,7 @@ product = linearReducer 1 (*)
 
 {- | Get the largest element of the sequence.
 
-===== Examples
+===== __Examples__
 
 >>> reduceList maximum [1,3,2]
 Just 3
@@ -362,7 +379,7 @@ maximum = linearReducer Nothing (\r a -> max (Just a) r)
 
 {- | Get the largest element of the non-empty sequence.
 
-===== Examples
+===== __Examples__
 
 >>> reduceNonEmpty1 maximum1 (2 :| [1,4,3])
 4
@@ -375,7 +392,7 @@ maximum1 a = linearReducer a max
 
 {- | Get the smallest element of the sequence.
 
-===== Examples
+===== __Examples__
 
 >>> reduceList minimum [1,3,2]
 Just 1
@@ -394,7 +411,7 @@ minimum = linearReducer Nothing $ \r a ->
 
 {- | Get the largest element of the non-empty sequence.
 
-===== Examples
+===== __Examples__
 
 >>> reduceNonEmpty1 minimum1 (2 :| [1,4,3])
 1
@@ -407,7 +424,7 @@ minimum1 a = linearReducer a min
 
 {- | Get the length of the sequence.
 
-===== Examples
+===== __Examples__
 
 >>> reduceList length [1,3,2]
 3
@@ -421,7 +438,7 @@ length = linearReducer 0 (\acc _ -> acc + 1)
 {- | Compare length of the sequence against a constant. It short-circuits upon reaching 'GT'
 thus terminates even on infinite sequences.
 
-===== Examples
+===== __Examples__
 
 >>> reduceList (compareLength 0) []
 EQ
@@ -455,7 +472,7 @@ compareLength n =
 
 {- | Get the mean (average) of the elements.
 
-===== Examples
+===== __Examples__
 
 >>> reduceList mean [1..5]
 Just 3.0
@@ -476,7 +493,7 @@ mean =
 
 {- | Get the mean (average) of non-empty sequence of elements.
 
-===== Examples
+===== __Examples__
 
 >>> reduceNonEmpty1 mean1 (1:|[2..5])
 3.0
@@ -494,7 +511,7 @@ mean1 a =
 
 {- | Get the variance (population) of the elements.
 
-===== Examples
+===== __Examples__
 
 >>> reduceList variance [1,5,3,9,2]
 Just 8.0
@@ -520,7 +537,7 @@ variance =
 
 {- | Get the variance (population) of non-empty sequence of elements.
 
-===== Examples
+===== __Examples__
 
 >>> reduceNonEmpty1 variance1 (1 :| [5,3,9,2])
 8.0
@@ -540,7 +557,7 @@ variance1 a =
 
 {- | Get the disjunction of 'Bool's.
 
-===== Examples
+===== __Examples__
 
 >>> reduceList or [True,False,True]
 True
@@ -561,7 +578,7 @@ or = any id
 
 {- | Get the conjunction of 'Bool's.
 
-===== Examples
+===== __Examples__
 
 >>> reduceList and [True,False,True]
 False
@@ -582,36 +599,7 @@ and = all id
 
 {- | Get the conjunction of the results of passed predicates.
 
-===== Examples
-
->>> reduceList (all even) [4,2,6]
-True
-
->>> reduceList (all even) [1,2,3]
-False
-
-'and' short-circuits on first 'False' value
-
->>> reduceList (all even) [1..]
-False
-
-@since 1.0.0
--}
-{-# INLINE all #-}
-all :: forall (a :: Type). (a -> Bool) -> Reducer a Bool
-all pred =
-  Reducer
-    { state = True
-    , finalize = id
-    , step = \_ a ->
-        if pred a
-          then Continue True
-          else Reduced False
-    }
-
-{- | Get the conjunction of the results of passed predicates.
-
-===== Examples
+===== __Examples__
 
 >>> reduceList (any even) [1,2,3]
 True
@@ -638,9 +626,38 @@ any pred =
           else Continue False
     }
 
+{- | Get the conjunction of the results of passed predicates.
+
+===== __Examples__
+
+>>> reduceList (all even) [4,2,6]
+True
+
+>>> reduceList (all even) [1,2,3]
+False
+
+'and' short-circuits on first 'False' value
+
+>>> reduceList (all even) [1..]
+False
+
+@since 1.0.0
+-}
+{-# INLINE all #-}
+all :: forall (a :: Type). (a -> Bool) -> Reducer a Bool
+all pred =
+  Reducer
+    { state = True
+    , finalize = id
+    , step = \_ a ->
+        if pred a
+          then Continue True
+          else Reduced False
+    }
+
 {- | Check if sequence is empty.
 
-===== Examples
+===== __Examples__
 
 >>> reduceList null []
 True
@@ -661,7 +678,7 @@ null =
 
 {- | Extract the first element if exists.
 
-===== Examples
+===== __Examples__
 
 >>> reduceList head [1,2,3]
 Just 1
@@ -685,7 +702,7 @@ head =
 
 {- | Extract the first element from non-empty sequence.
 
-===== Examples
+===== __Examples__
 
 >>> reduceNonEmpty1 head1 (2 :| [1,4,3])
 2
@@ -698,7 +715,7 @@ head1 = pure
 
 {- | Extract the last element if exists.
 
-===== Examples
+===== __Examples__
 
 >>> reduceList last [1,2,3]
 Just 3
@@ -714,7 +731,7 @@ last = linearReducer Nothing (const Just)
 
 {- | Extract the last element from non-empty sequence.
 
-===== Examples
+===== __Examples__
 
 >>> reduceNonEmpty1 last1 (2 :| [1,4,3])
 3
@@ -727,7 +744,7 @@ last1 a = linearReducer a (\_ a -> a)
 
 {- | Get the first element for which the passed predicate returns 'True', if exists.
 
-===== Examples
+===== __Examples__
 
 >>> reduceList (find even) [1,2,3]
 Just 2
@@ -751,7 +768,7 @@ find pred =
 
 {- | Check if any elements is equal (using '==') to the one passed.
 
-===== Examples
+===== __Examples__
 
 >>> reduceList (elem 2) [1,2,3]
 True
@@ -767,7 +784,7 @@ elem a = elemBy (a ==)
 
 {- | Check if for any elements the passed predicate returns 'True'.
 
-===== Examples
+===== __Examples__
 
 >>> reduceList (elemBy even) [1,2,3]
 True
@@ -791,7 +808,7 @@ elemBy pred =
 
 {- | Apply '<>' to all elements in the sequence.
 
-===== Examples
+===== __Examples__
 
 >>> reduceList sconcat ["hello"," ","world"]
 Just "hello world"
@@ -809,7 +826,7 @@ sconcat = linearReducer Nothing $ \acc a -> case acc of
 
 {- | Apply '<>' to all elements in the sequence.
 
-===== Examples
+===== __Examples__
 
 >>> reduceList (sconcat1 "hello") [" ","world"]
 "hello world"
@@ -825,7 +842,7 @@ sconcat1 a = linearReducer a (<>)
 
 {- | Apply '<>' to all elements in the sequence.
 
-===== Examples
+===== __Examples__
 
 >>> reduceList mconcat ["hello"," ","world"]
 "hello world"
@@ -841,7 +858,7 @@ mconcat = linearReducer mempty (<>)
 
 {- | Collect all elements into a list.
 
-===== Examples
+===== __Examples__
 
 >>> reduceReplicate intoList 10 42
 [42,42,42,42,42,42,42,42,42,42]
@@ -859,7 +876,7 @@ intoList =
 
 {- | Collect all elements into a non-empty list or @Nothing@ if it does not contain any elements.
 
-===== Examples
+===== __Examples__
 
 >>> reduceList intoNonEmpty [1,2,3]
 Just (1 :| [2,3])
@@ -883,7 +900,7 @@ intoNonEmpty =
 
 {- | Collect all elements from non-empty sequence into a non-empty list.
 
-===== Examples
+===== __Examples__
 
 >>> reduceNonEmpty1 intoNonEmpty1 (1 :| [2,3])
 1 :| [2,3]
@@ -904,7 +921,7 @@ intoNonEmpty1 a =
 It seems pointless but can be useful when a transducer takes multiple reducers
 and you care only about some of them.
 
-===== Examples
+===== __Examples__
 
 >>> reduceList discard [0..]
 ()
@@ -929,7 +946,7 @@ to @base@ list operators so this operator can be used to clearly indicate the fl
 
 Note that this is just like '$' but specialized to t'Reducer's.
 
-===== Examples
+===== __Examples__
 
 >>> reduceList (drop 2 |> take 3 |> intoList) [1..]
 [3,4,5]
@@ -958,7 +975,7 @@ infixr 5 |>
 
 {- | Apply passed function to every element in the sequence
 
-===== Examples
+===== __Examples__
 
 >>> reduceList (map even |> intoList) [2,6,4,5,8]
 [True,True,True,False,True]
@@ -980,7 +997,7 @@ map f (Reducer state finalize step) =
 
 {- | Take first @n@ elements from the beginning of the sequence.
 
-===== Examples
+===== __Examples__
 
 >>> reduceList (take 3 |> intoList) [1..]
 [1,2,3]
@@ -1014,7 +1031,7 @@ take n (Reducer state finalize step) =
 Note that it short-circuits upon first value that fails the predicate even if some further value
 would pass it.
 
-===== Examples
+===== __Examples__
 
 >>> reduceList (takeWhile even |> intoList) [2,6,4,5,8]
 [2,6,4]
@@ -1039,7 +1056,7 @@ takeWhile pred (Reducer state finalize step) =
 
 {- | Drop (skip/remove) first @n@ elements from the beginning of the sequence.
 
-===== Examples
+===== __Examples__
 
 >>> reduceList (drop 3 |> intoList) [1..5]
 [4,5]
@@ -1066,7 +1083,7 @@ drop n (Reducer state finalize step) =
 Note that upon first value that fails the predicate the whole remaining sequence will be forwarded
 even if some further value would pass it.
 
-===== Examples
+===== __Examples__
 
 >>> reduceList (dropWhile even |> intoList) [2,6,4,5,8]
 [5,8]
@@ -1094,7 +1111,7 @@ dropWhile pred (Reducer state finalize step) =
 
 {- | Keep only elements for which the passed predicate returns 'True'.
 
-===== Examples
+===== __Examples__
 
 >>> reduceList (filter even |> intoList) [1..10]
 [2,4,6,8,10]
@@ -1119,7 +1136,7 @@ filter pred (Reducer state finalize step) =
 
 {- | Keep only elements that are mapped to 'Just'.
 
-===== Examples
+===== __Examples__
 
 >>> import Text.Read (readMaybe)
 >>> reduceList (mapMaybe (readMaybe @Int) |> intoList) ["1","foo","2","bar"]
@@ -1145,7 +1162,7 @@ mapMaybe f (Reducer state finalize step) =
 
 {- | Keep only 'Just' elements.
 
-===== Examples
+===== __Examples__
 
 >>> reduceList (catMaybes |> intoList) [Just 1,Nothing,Just 2,Just 3,Nothing]
 [1,2,3]
@@ -1168,7 +1185,7 @@ catMaybes (Reducer state finalize step) =
 
 {- | Insert an element in between every element in the sequence.
 
-===== Examples
+===== __Examples__
 
 >>> reduceList (intersperse 0 |> intoList) [1,2,3]
 [1,0,2,0,3]
@@ -1195,7 +1212,7 @@ intersperse middle (Reducer state finalize step) =
 
 {- | Flatten a sequence of @[a]@ into a sequence of @a@.
 
-===== Examples
+===== __Examples__
 
 >>> reduceList (concatList |> intoList) [[1,2],[3,4,5]]
 [1,2,3,4,5]
@@ -1222,7 +1239,7 @@ concatList (Reducer state finalize step) =
 
 {- | Flatten a sequence of @NonEmpty a@ into a sequence of @a@.
 
-===== Examples
+===== __Examples__
 
 >>> reduceList (concatNonEmpty |> intoList) [1:|[2],3:|[4,5]]
 [1,2,3,4,5]
@@ -1240,7 +1257,7 @@ concatNonEmpty reducer = map NonEmpty.toList |> concatList reducer
 
 Note that it has the same performance problems as 'List.nub'.
 
-===== Examples
+===== __Examples__
 
 >>> reduceList (nub |> intoList) [1,2,1,3,3,2,2]
 [1,2,3]
@@ -1260,7 +1277,7 @@ accordingly to passed predicate.
 
 Note that it has the same performance problems as 'List.nubBy'.
 
-===== Examples
+===== __Examples__
 
 Get elements that are not equal to each other modulo @5@.
 
@@ -1292,7 +1309,7 @@ nubBy eq (Reducer state finalize step) =
 {- | Preserve the first element and run the passed reducer on the remaining sequence.
 'Nothing' if the sequence has no elements.
 
-===== Examples
+===== __Examples__
 
 >>> reduceList (uncons sum) [1,2,3]
 Just (1,5)
@@ -1318,7 +1335,7 @@ uncons (Reducer state finalize step) =
 {- | Preserve the last element and run the passed reducer on the initial sequence.
 'Nothing' if the sequence has no elements.
 
-===== Examples
+===== __Examples__
 
 >>> reduceList (unsnoc sum) [1,2,3,4]
 Just (6,4)
@@ -1343,7 +1360,7 @@ unsnoc (Reducer state finalize step) =
 
 {- | Apply the passed function with every element of the input and add it to the input stream.
 
-===== Examples
+===== __Examples__
 
 Running sums
 
@@ -1371,7 +1388,7 @@ scan scanStep scanInit (Reducer state finalize step) =
 
 {- | Associate index with each element, starting at zero.
 
-===== Examples
+===== __Examples__
 
 >>> reduceList (enumerate |> intoList) ["foo","bar"]
 [(0,"foo"),(1,"bar")]
@@ -1387,7 +1404,7 @@ enumerate = scan (\acc _ -> acc + 1) 0
 
 {- | Run two reducers on the same input.
 
-===== Examples
+===== __Examples__
 
 >>> reduceList (zip sum product) [1,2,3,4]
 (10,24)
@@ -1404,7 +1421,7 @@ zip = liftA2 (,)
 
 {- | Run first reducer on first element of the tuple and second reducer on the second.
 
-===== Examples
+===== __Examples__
 
 Collect @fst@ into a list and sums the @snd@
 
@@ -1428,7 +1445,7 @@ zipTuple (Reducer state1 finalize1 step1) (Reducer state2 finalize2 step2) =
 
 {- | Run first reducer on @Left@ elements and second reducer on @Right@s.
 
-===== Examples
+===== __Examples__
 
 Collect @fst@ into a list and sums the @snd@
 
@@ -1455,7 +1472,7 @@ zipEither (Reducer state1 finalize1 step1) (Reducer state2 finalize2 step2) =
 
 {- | Run first reducer if on elements that satisfy the predicate and second otherwise
 
-===== Examples
+===== __Examples__
 
 >>> reduceList (partition even sum intoList) [1,2,3,4,5]
 (6,[1,3,5])
@@ -1478,7 +1495,7 @@ partition f (Reducer state1 finalize1 step1) (Reducer state2 finalize2 step2) =
 
 {- | Run first reducer on the longest prefix that satisfies the predicate, then second.
 
-===== Examples
+===== __Examples__
 
 >>> reduceList (span even intoList intoList) [2,6,4,1,2,3,4]
 ([2,6,4],[1,2,3,4])
@@ -1506,7 +1523,7 @@ span f (Reducer state1 finalize1 step1) (Reducer state2 finalize2 step2) =
 
 @'break' p = 'span' (not . p)@
 
-===== Examples
+===== __Examples__
 
 >>> reduceList (break odd intoList intoList) [2,6,4,1,2,3,4]
 ([2,6,4],[1,2,3,4])
@@ -1532,7 +1549,7 @@ break f (Reducer state1 finalize1 step1) (Reducer state2 finalize2 step2) =
 
 {- | Run first reducer on the first @n@ elements,then second.
 
-===== Examples
+===== __Examples__
 
 >>> reduceList (splitAt 3 intoList intoList) [2,6,4,1,2,3,4]
 ([2,6,4],[1,2,3,4])
@@ -1558,7 +1575,7 @@ splitAt n (Reducer state1 finalize1 step1) (Reducer state2 finalize2 step2) =
 
 {- | Split sequence into two alternating sequences.
 
-===== Examples
+===== __Examples__
 
 >>> reduceList (uninterleave intoList intoList) [1..5]
 ([1,3,5],[2,4])
@@ -1583,7 +1600,7 @@ uninterleave (Reducer state1 finalize1 step1) (Reducer state2 finalize2 step2) =
 
 {- | Split off every @n@th element into the first reducer and rest to the second
 
-===== Examples
+===== __Examples__
 
 >>> reduceList (takeNth 3 intoList intoList) [1..10]
 ([1,5,9],[2,3,4,6,7,8,10])
@@ -1607,11 +1624,27 @@ takeNth n (Reducer state1 finalize1 step1) (Reducer state2 finalize2 step2) =
           else fmap (k - 1,) (zipStepRight step2 s a)
     }
 
+{- | Feed one element to the reducer before the rest of the sequence.
+
+===== __Examples__
+
+>>> reduceList (feed1 1 |> intoList) [2,3]
+[1,2,3]
+
+@since 1.0.0
+-}
+{-# INLINE feed1 #-}
+feed1 :: forall (a :: Type) (r :: Type). a -> Reducer a r -> Reducer a r
+feed1 a (Reducer state finalize step) =
+  case step state a of
+    Continue state' -> Reducer state' finalize step
+    Reduced state' -> Reducer state' finalize (\s _ -> Reduced s)
+
 -- ** Grouping
 
 {- | Split the sequence into groups of consecutive equal elements.
 
-===== Examples
+===== __Examples__
 
 >>> reduceList (group intoList |> intoList) [1,2,2,3,3,1]
 [[1],[2,2],[3,3],[1]]
@@ -1630,7 +1663,7 @@ group = groupBy (==)
 {- | Split the sequence into groups of consecutive elements for which the passed predicate
 returns 'True' when applied to the first element of the group and the current element.
 
-===== Examples
+===== __Examples__
 
 Get non-decreasing sub-sequences
 
@@ -1650,7 +1683,7 @@ groupBy eq = groupByKey id eq
 
 {- | Split the sequence into groups of consecutive elements that map to the same key.
 
-===== Examples
+===== __Examples__
 
 >>> reduceList (groupOn even intoList |> intoList) [1,2,4,5,7,9,6,8]
 [[1],[2,4],[5,7,9],[6,8]]
@@ -1669,7 +1702,7 @@ groupOn key = groupByKey key (\k a -> k == key a)
 
 {- | Split the sequence into groups of consecutive elements.
 
-===== Examples
+===== __Examples__
 
 Group elements that are at most 2 greater than the first element of the group.
 
@@ -1691,7 +1724,7 @@ groupByKey key sameGroup (Reducer groupState groupFinalize groupStep) =
 
 {- | Like 'group' but takes non-empty reducer.
 
-===== Examples
+===== __Examples__
 
 Run-length encoding
 
@@ -1711,7 +1744,7 @@ group1 = groupBy1 (==)
 
 {- | Like 'groupBy' but takes non-empty reducer.
 
-===== Examples
+===== __Examples__
 
 >>> reduceList (groupBy1 (\a b -> (a `mod` 3) == (b `mod` 3)) maximum1 |> intoList) [1,4,5,9,6]
 [4,5,9]
@@ -1729,7 +1762,7 @@ groupBy1 eq = groupByKey1 id eq
 
 {- | Like 'groupOn' but takes non-empty reducer.
 
-===== Examples
+===== __Examples__
 
 >>> reduceList (groupOn1 even head1 |> intoList) [1,2,4,5,7,9,6,8]
 [1,2,5,6]
@@ -1747,6 +1780,13 @@ groupOn1 ::
 groupOn1 key = groupByKey1 key (\k a -> k == key a)
 
 {- | Like 'groupByKey' but takes non-empty reducer.
+
+===== __Examples__
+
+Group elements that are at most 2 greater than the first element of the group and compute the mean.
+
+>>> reduceList (groupByKey1 (+ 2) (\bound x -> x <= bound) mean1 intoList) [1,2,3,4,5,10,11,12,13]
+[2.0,4.5,11.0,13.0]
 
 @since 1.0.0
 -}
@@ -1772,6 +1812,8 @@ groupByKey1 key sameGroup mkGroupReducer =
       case step state a of
         Continue state' -> Continue (Reducer state' finalize step)
         Reduced state' -> Reduced (Reducer state' finalize step)
+
+-- * Building Blocks
 
 {- | Building block for @group*@ functions
 
@@ -1812,27 +1854,9 @@ groupByKeyWith key sameGroup groupSeed groupFinalize groupStep (Reducer state fi
                 Continue s' -> Continue (Just (key a, groupSeed a), s')
     }
 
-{- | Feed one element to the reducer before the rest of the sequence.
-
-===== Examples
-
->>> reduceList (feed1 1 |> intoList) [2,3]
-[1,2,3]
-
-@since 1.0.0
--}
-{-# INLINE feed1 #-}
-feed1 :: forall (a :: Type) (r :: Type). a -> Reducer a r -> Reducer a r
-feed1 a (Reducer state finalize step) =
-  case step state a of
-    Continue state' -> Reducer state' finalize step
-    Reduced state' -> Reducer state' finalize (\s _ -> Reduced s)
-
--- * Building Blocks
-
 {- | Construct a reducer that consumes whole input.
 
-===== Examples
+===== __Examples__
 
 @sum = linearReducer 0 (+)@
 
@@ -1874,6 +1898,7 @@ data ZipFinished
 -- | @since 1.0.0
 {-# INLINE zipStepLeft #-}
 zipStepLeft ::
+  forall (a1 :: Type) (s1 :: Type) (s2 :: Type).
   (s1 -> a1 -> Reduced s1) ->
   (ZipFinished, s1, s2) ->
   a1 ->
@@ -1892,6 +1917,7 @@ zipStepLeft step1 (finished, s1, s2) a1 =
 -- | @since 1.0.0
 {-# INLINE zipStepRight #-}
 zipStepRight ::
+  forall (a2 :: Type) (s1 :: Type) (s2 :: Type).
   (s2 -> a2 -> Reduced s2) ->
   (ZipFinished, s1, s2) ->
   a2 ->
@@ -1910,6 +1936,7 @@ zipStepRight step2 (finished, s1, s2) a2 =
 -- | @since 1.0.0
 {-# INLINE zipStepBoth #-}
 zipStepBoth ::
+  forall (a1 :: Type) (a2 :: Type) (s1 :: Type) (s2 :: Type).
   (s1 -> a1 -> Reduced s1) ->
   (s2 -> a2 -> Reduced s2) ->
   (ZipFinished, s1, s2) ->
