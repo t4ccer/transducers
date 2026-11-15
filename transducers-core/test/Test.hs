@@ -41,6 +41,7 @@ import Prelude (Num((-)), Ord((<), (>)), foldr, otherwise)
 #endif
 
 import Data.Transducer (
+  Initial (Zero),
   all,
   and,
   any,
@@ -79,7 +80,6 @@ import Data.Transducer (
   reduceIterate,
   reduceList,
   reduceNonEmpty,
-  reduceNonEmpty1,
   reduceRepeat,
   reduceReplicate,
   sconcat,
@@ -98,9 +98,8 @@ main :: IO ()
 main = do
   setLocaleEncoding utf8
 
-  let
-    moreTests :: QuickCheckTests -> QuickCheckTests
-    moreTests = max 1_000
+  let moreTests :: QuickCheckTests -> QuickCheckTests
+      moreTests = max 1_000
 
   defaultMain $
     adjustOption moreTests $
@@ -115,20 +114,20 @@ main = do
             "NonEmpty"
             [ testProperty "nonEmpty . reduceList intoList = reduceList intoNonEmpty" $ \(xs :: [Int]) ->
                 nonEmpty (reduceList intoList xs) === reduceList intoNonEmpty xs
-            , testProperty "reduceNonEmpty1 intoNonEmpty1 = id" $ \(xs :: NonEmpty Int) ->
-                reduceNonEmpty1 intoNonEmpty1 xs === xs
+            , testProperty "reduceNonEmpty intoNonEmpty1 = id" $ \(xs :: NonEmpty Int) ->
+                reduceNonEmpty intoNonEmpty1 xs === xs
             ]
         , testGroup
             "iterate"
             [ testProperty "Equivalent to []" $ \(x :: Int) (Fn (f :: Int -> Int)) (d :: Int) (t :: Int) ->
                 List.take t (List.drop d (List.iterate f x))
-                  === reduceIterate (drop d |> take t |> intoList) f x
+                  === reduceIterate @'Zero (drop d |> take t |> intoList) f x
             ]
         , testGroup
             "repeat"
             [ testProperty "Equivalent to []" $ \(x :: Int) (d :: Int) (t :: Int) ->
                 List.take t (List.drop d (List.repeat x))
-                  === reduceRepeat (drop d |> take t |> intoList) x
+                  === reduceRepeat @'Zero (drop d |> take t |> intoList) x
             ]
         , testGroup
             "replicate"
@@ -229,7 +228,7 @@ main = do
         , testGroup
             "maximum1"
             [ testProperty "Equivalent to NonEmpty" $ \(xs :: NonEmpty Int) ->
-                List.maximum xs === reduceNonEmpty1 maximum1 xs
+                List.maximum xs === reduceNonEmpty maximum1 xs
             ]
         , testGroup
             "minimum"
@@ -240,7 +239,7 @@ main = do
         , testGroup
             "minimum1"
             [ testProperty "Equivalent to NonEmpty" $ \(xs :: NonEmpty Int) ->
-                List.minimum xs === reduceNonEmpty1 minimum1 xs
+                List.minimum xs === reduceNonEmpty minimum1 xs
             ]
         , testGroup
             "head"
@@ -251,8 +250,8 @@ main = do
         , testGroup
             "head1"
             [ testProperty "Equivalent to NonEmpty" $ \(xs :: NonEmpty Int) ->
-                NonEmpty.head xs === reduceNonEmpty1 head1 xs
-            , testCase "head1 (a :| undefined) == a" (reduceNonEmpty1 head1 ('a' :| undefined) @?= 'a')
+                NonEmpty.head xs === reduceNonEmpty head1 xs
+            , testCase "head1 (a :| undefined) == a" (reduceNonEmpty head1 ('a' :| undefined) @?= 'a')
             ]
         , testGroup
             "last"
@@ -263,7 +262,7 @@ main = do
         , testGroup
             "last1"
             [ testProperty "Equivalent to NonEmpty" $ \(xs :: NonEmpty Int) ->
-                NonEmpty.last xs === reduceNonEmpty1 last1 xs
+                NonEmpty.last xs === reduceNonEmpty last1 xs
             ]
         , testGroup
             "find"
@@ -315,12 +314,12 @@ main = do
         , testGroup
             "sconcat"
             [ testProperty "Equivalent to NonEmpty" $ \(xs :: NonEmpty [Int]) ->
-                Just (Semigroup.sconcat xs) === reduceNonEmpty sconcat xs
+                Just (Semigroup.sconcat xs) === reduceNonEmpty @'Zero sconcat xs
             ]
         , testGroup
             "sconcat1"
             [ testProperty "Equivalent to NonEmpty" $ \(xs :: NonEmpty [Int]) ->
-                Semigroup.sconcat xs === reduceNonEmpty1 sconcat1 xs
+                Semigroup.sconcat xs === reduceNonEmpty sconcat1 xs
             ]
         , testGroup
             "mconcat"
@@ -400,22 +399,22 @@ main = do
         , testGroup
             "group"
             [ testProperty "Equivalent to []" $ \(xs :: [Int]) ->
-                List.group xs === reduceList (group intoList |> intoList) xs
+                List.group xs === reduceList (group @'Zero intoList |> intoList) xs
             ]
         , testGroup
             "groupBy"
             [ testProperty "Equivalent to []" $ \(xs :: [Int]) (Fn2 (eq :: Int -> Int -> Bool)) ->
-                List.groupBy eq xs === reduceList (groupBy eq intoList |> intoList) xs
+                List.groupBy eq xs === reduceList (groupBy @'Zero eq intoList |> intoList) xs
             ]
         , testGroup
             "groupOn"
             [ testCase
                 "groupOn even [1, 2, 4, 5, 7, 9, 6, 8] = [[1], [2, 4], [5, 7, 9], [6, 8]]"
-                ( reduceList (groupOn even intoList |> intoList) [1 :: Int, 2, 4, 5, 7, 9, 6, 8]
-                    @?= ([[1], [2, 4], [5, 7, 9], [6, 8]])
+                ( reduceList (groupOn @'Zero even intoList |> intoList) [1 :: Int, 2, 4, 5, 7, 9, 6, 8]
+                    @?= [[1], [2, 4], [5, 7, 9], [6, 8]]
                 )
             , testProperty "Equivalent to []" $ \(xs :: [Int]) (Fn (key :: Int -> Int)) ->
-                List.groupBy (\x y -> key x == key y) xs === reduceList (groupOn key intoList |> intoList) xs
+                List.groupBy (\x y -> key x == key y) xs === reduceList (groupOn @'Zero key intoList |> intoList) xs
             ]
         ]
 

@@ -10,6 +10,7 @@ import Data.Int (Int)
 import Data.Kind (Type)
 import Data.Maybe (Maybe (Just, Nothing))
 import Data.Semigroup ((<>))
+import Data.Transducer (IsInitial, Reducer, length, map, reduceList, sum, (|>))
 import GHC.Base (seq, ($), (.))
 import GHC.Num (Integer, (*), (+), (-))
 import GHC.Real (div, fromIntegral)
@@ -18,8 +19,6 @@ import System.IO (IO)
 import Test.Tasty ()
 import Test.Tasty.Bench (Benchmark, bcompare, bench, bgroup, defaultMain, env, nf)
 import Prelude qualified as List
-
-import Data.Transducer (Reducer, length, map, reduceList, sum, (|>))
 
 main :: IO ()
 main = defaultMain (List.map varianceGroup [1e5, 1e6, 1e7])
@@ -71,7 +70,7 @@ variance_list_fold =
   accVariance . foldl' (\(Acc total totalSq n) x -> Acc (total + x) (totalSq + x * x) (n + 1)) (Acc 0 0 0)
 
 {-# INLINE variance #-}
-variance :: Reducer Integer (Maybe Integer)
+variance :: (IsInitial init) => Reducer init Integer (Maybe Integer)
 variance = do
   total <- sum
   totalSq <- map (\x -> x * x) |> sum

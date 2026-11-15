@@ -13,16 +13,15 @@ import Test.QuickCheck ((===))
 import Test.Tasty (adjustOption, defaultMain, testGroup)
 import Test.Tasty.QuickCheck (QuickCheckTests, testProperty)
 
-import Data.Transducer (intoList, reduceList, (|>))
+import Data.Transducer (Initial (Zero), intoList, reduceList, (|>))
 import Data.Transducer.Vector (concatVector, intoVector, intoVectorStream, reduceVector, reduceVectorStream)
 
 main :: IO ()
 main = do
   setLocaleEncoding utf8
 
-  let
-    moreTests :: QuickCheckTests -> QuickCheckTests
-    moreTests = max 1_000
+  let moreTests :: QuickCheckTests -> QuickCheckTests
+      moreTests = max 1_000
 
   defaultMain $
     adjustOption moreTests $
@@ -40,7 +39,7 @@ main = do
         , testGroup
             "Stream"
             [ testProperty "reduceList intoVectorStream = Stream.fromList" $ \(xs :: [Int]) ->
-                Stream.toList (reduceList (intoVectorStream @Identity) xs)
+                Stream.toList (reduceList (intoVectorStream @'Zero @Identity) xs)
                   === Stream.toList (Stream.fromList xs)
             , testProperty "reduceVectorStream intoList . Stream.fromList = id" $ \(xs :: [Int]) ->
                 runIdentity (reduceVectorStream intoList (Stream.fromList xs)) === xs

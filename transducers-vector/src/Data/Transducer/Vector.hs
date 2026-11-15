@@ -17,6 +17,7 @@ module Data.Transducer.Vector (
 
 import Control.Applicative (Applicative (pure))
 import Control.Monad (Functor (fmap), Monad)
+import Data.Function (($))
 import Data.Kind (Type)
 import Data.List (reverse)
 import Data.Ord ((>=))
@@ -28,63 +29,62 @@ import Data.Vector.Generic qualified as Generic
 import GHC.Num (Num ((+)))
 
 import Data.Transducer (
+  Initial (Zero),
+  IsInitial,
   Reduced (Continue, Reduced),
   Reducer (Reducer, finalize, state, step),
+  initializeReducer,
  )
 
-{- $setup
->>> import Data.Vector qualified as Vector
->>> import Data.Transducer ((|>), sum, take, reduceIterate, reduceList)
->>> import Data.Functor.Identity (Identity)
--}
+-- $setup
+-- >>> import Data.Vector qualified as Vector
+-- >>> import Data.Transducer (Initial (Zero), (|>), sum, take, reduceIterate, reduceList)
+-- >>> import Data.Functor.Identity (Identity)
 
-{- | Run a reducer on all @Vector@ elements.
-
-===== Examples
-
->>> reduceVector sum (Vector.fromList [1, 2, 3])
-6
-
-@since 1.0.0
--}
+-- | Run a reducer on all @Vector@ elements.
+--
+-- ===== Examples
+--
+-- >>> reduceVector sum (Vector.fromList [1, 2, 3])
+-- 6
+--
+-- @since 1.0.0
 {-# INLINE reduceVector #-}
-reduceVector :: forall (a :: Type) (r :: Type). Reducer a r -> Vector a -> r
+reduceVector :: forall (a :: Type) (r :: Type). Reducer 'Zero a r -> Vector a -> r
 reduceVector = reduceGenericVector
 
-{- | Like 'reduceVector' but works over generic vector interface.
-
-@since 1.0.0
--}
+-- | Like 'reduceVector' but works over generic vector interface.
+--
+-- @since 1.0.0
 {-# INLINE reduceGenericVector #-}
 reduceGenericVector ::
   forall (v :: Type -> Type) (a :: Type) (r :: Type).
-  Generic.Vector v a =>
-  Reducer a r ->
+  (Generic.Vector v a) =>
+  Reducer 'Zero a r ->
   v a ->
   r
 reduceGenericVector (Reducer state finalize step) v = finalize (go state 0 (Generic.length v) v)
   where
     go s i len v =
-      if i >= len
-        then s
-        else case step s (Generic.unsafeIndex v i) of
-          Reduced s' -> s'
-          Continue s' -> go s' (i + 1) len v
+      if i >= len then
+        s
+      else case step s (Generic.unsafeIndex v i) of
+        Reduced s' -> s'
+        Continue s' -> go s' (i + 1) len v
 
-{- | Run a reducer on all @Stream@ elements.
-
-===== Examples
-
->>> reduceVectorStream sum (Stream.fromList [1,2,3])
-6
-
-@since 1.0.0
--}
+-- | Run a reducer on all @Stream@ elements.
+--
+-- ===== Examples
+--
+-- >>> reduceVectorStream sum (Stream.fromList [1,2,3])
+-- 6
+--
+-- @since 1.0.0
 {-# INLINE reduceVectorStream #-}
 reduceVectorStream ::
   forall (m :: Type -> Type) (a :: Type) (r :: Type).
-  Monad m =>
-  Reducer a r ->
+  (Monad m) =>
+  Reducer 'Zero a r ->
   Stream m a ->
   m r
 reduceVectorStream (Reducer state finalize step) (Stream streamStep ss) =
@@ -99,86 +99,91 @@ reduceVectorStream (Reducer state finalize step) (Stream streamStep ss) =
         Skip streamR' -> go s streamR'
         Done -> pure s
 
-{- | Collect all elements into a @Vector@.
-
-===== Examples
-
->>> reduceIterate (take 10 |> intoVector) (+3) 42
-[42,45,48,51,54,57,60,63,66,69]
-
-@since 1.0.0
--}
+-- | Collect all elements into a @Vector@.
+--
+-- ===== Examples
+--
+-- >>> reduceIterate @'Zero (take 10 |> intoVector) (+3) 42
+-- [42,45,48,51,54,57,60,63,66,69]
+--
+-- @since 1.0.0
 {-# INLINE intoVector #-}
-intoVector :: forall (a :: Type). Reducer a (Vector a)
+intoVector :: forall (init :: Initial) (a :: Type). (IsInitial init) => Reducer init a (Vector a)
 intoVector = intoGenericVector
 
-{- | Like 'intoVector' but works over generic vector interface.
-
-@since 1.0.0
--}
+-- | Like 'intoVector' but works over generic vector interface.
+--
+-- @since 1.0.0
 {-# INLINE intoGenericVector #-}
 intoGenericVector ::
-  forall (a :: Type) (v :: Type -> Type). Generic.Vector v a => Reducer a (v a)
+  forall (init :: Initial) (a :: Type) (v :: Type -> Type).
+  (IsInitial init, Generic.Vector v a) =>
+  Reducer init a (v a)
 intoGenericVector =
-  Reducer
-    { state = (0, [])
-    , finalize = \(n, as) -> Generic.unstreamR (Bundle.fromListN n as)
-    , step = \(!n, as) a -> Continue (n + 1, a : as)
-    }
+  initializeReducer $
+    Reducer
+      { state = (0, [])
+      , finalize = \(n, as) -> Generic.unstreamR (Bundle.fromListN n as)
+      , step = \(!n, as) a -> Continue (n + 1, a : as)
+      }
 
-{- | Collect all elements into a @Stream@.
-
-===== Examples
-
->>> Stream.toList (reduceList (intoVectorStream @Identity) [1,2,3])
-Identity [1,2,3]
-
-@since 1.0.0
--}
+-- | Collect all elements into a @Stream@.
+--
+-- ===== Examples
+--
+-- >>> Stream.toList (reduceList (intoVectorStream @'Zero @Identity) [1,2,3])
+-- Identity [1,2,3]
+--
+-- @since 1.0.0
 {-# INLINE intoVectorStream #-}
 intoVectorStream ::
-  forall (m :: Type -> Type) (a :: Type). Monad m => Reducer a (Stream m a)
+  forall (init :: Initial) (m :: Type -> Type) (a :: Type).
+  (IsInitial init, Monad m) =>
+  Reducer init a (Stream m a)
 intoVectorStream =
-  Reducer
-    { state = []
-    , finalize = \as -> Stream.fromList (reverse as)
-    , step = \as a -> Continue (a : as)
-    }
+  initializeReducer $
+    Reducer
+      { state = []
+      , finalize = \as -> Stream.fromList (reverse as)
+      , step = \as a -> Continue (a : as)
+      }
 
-{- | Flatten a sequence of @Vector a@ into a sequence of @a@.
-
-===== Examples
-
->>> reduceList (concatVector |> intoVector) [Vector.fromList [1,2], Vector.fromList [3,4,5]]
-[1,2,3,4,5]
-
-@since 1.0.0
--}
+-- | Flatten a sequence of @Vector a@ into a sequence of @a@.
+--
+-- ===== Examples
+--
+-- >>> reduceList (concatVector |> intoVector) [Vector.fromList [1,2], Vector.fromList [3,4,5]]
+-- [1,2,3,4,5]
+--
+-- @since 1.0.0
 {-# INLINE concatVector #-}
 concatVector ::
-  forall (a :: Type) (r :: Type). Reducer a r -> Reducer (Vector a) r
+  forall (init :: Initial) (a :: Type) (r :: Type).
+  (IsInitial init) =>
+  Reducer 'Zero a r ->
+  Reducer init (Vector a) r
 concatVector = concatGenericVector
 
-{- | Like 'concatVector' but works over generic vector interface.
-
-@since 1.0.0
--}
+-- | Like 'concatVector' but works over generic vector interface.
+--
+-- @since 1.0.0
 {-# INLINE concatGenericVector #-}
 concatGenericVector ::
-  forall (v :: Type -> Type) (a :: Type) (r :: Type).
-  Generic.Vector v a =>
-  Reducer a r ->
-  Reducer (v a) r
+  forall (init :: Initial) (v :: Type -> Type) (a :: Type) (r :: Type).
+  (IsInitial init, Generic.Vector v a) =>
+  Reducer 'Zero a r ->
+  Reducer init (v a) r
 concatGenericVector (Reducer state finalize step) =
-  Reducer
-    { state = state
-    , finalize = finalize
-    , step = step' 0
-    }
+  initializeReducer $
+    Reducer
+      { state = state
+      , finalize = finalize
+      , step = step' 0
+      }
   where
     step' i s v =
-      if i >= Generic.length v
-        then Continue s
-        else case step s (Generic.unsafeIndex v i) of
-          Reduced s' -> Reduced s'
-          Continue s' -> step' (i + 1) s' v
+      if i >= Generic.length v then
+        Continue s
+      else case step s (Generic.unsafeIndex v i) of
+        Reduced s' -> Reduced s'
+        Continue s' -> step' (i + 1) s' v
